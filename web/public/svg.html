@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مستكشف الأرقام التفاعلي</title>
+    <style>
+        :root {
+            --primary-color: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Header / Progress Area */
+        .header {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #fafafa;
+        }
+
+        .step-indicator {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--primary-color);
+            background-color: #eef2ff;
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+
+        /* SVG Viewport Area */
+        .viewport {
+            padding: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #ffffff;
+            min-height: 300px;
+        }
+
+        .viewport svg {
+            width: 100%;
+            height: auto;
+            max-height: 350px;
+        }
+
+        /* Smooth transition for SVG elements */
+        .viewport svg * {
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+
+        /* Hidden class applied dynamically */
+        .svg-hidden {
+            opacity: 0 !important;
+            pointer-events: none;
+        }
+
+        /* Narration and Control Panel */
+        .footer {
+            padding: 24px;
+            background-color: #fafafa;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .narration-text {
+            font-size: 1.15rem;
+            line-height: 1.75;
+            color: var(--text-color);
+            min-height: 80px;
+            text-align: right;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        button {
+            padding: 10px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-next {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-next:hover:not(:disabled) {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-back {
+            background-color: white;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-back:hover:not(:disabled) {
+            background-color: #f1f5f9;
+        }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Smooth transition for SVG elements */
+.viewport svg * {
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+/* Hidden class: completely invisible */
+.svg-hidden {
+    opacity: 0 !important;
+    pointer-events: none;
+}
+
+/* Faded class: semi-transparent context from previous steps */
+.svg-faded {
+    opacity: 0.5 !important;
+    pointer-events: auto; /* Keeps them interactive if needed, or use none */
+}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <span class="step-indicator" id="stepIndicator">الخطوة ١ من ٣</span>
+    </div>
+
+    <!-- The actual SVG is rendered here -->
+    <div class="viewport" id="svgContainer"></div>
+
+    <div class="footer">
+        <div class="narration-text" id="narrationText"></div>
+        
+        <div class="controls">
+            <button class="btn-back" id="btnBack" onclick="changeStep(-1)">السابق</button>
+            <button class="btn-next" id="btnNext" onclick="changeStep(1)">التالي</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 1. Data Structure setup (Sample matching your requested schema)
+    const pageData = {
+        "steps": [
+                {
+                        "stepNumber": 1,
+                        "svgElements": [
+                                "title",
+                                "numberGroup"
+                        ],
+                        "textToSay": "string"
+                },
+                {
+                        "stepNumber": 2,
+                        "svgElements": [
+                                "chart",
+                                "colOnes",
+                                "digit3",
+                                "value3"
+                        ],
+                        "textToSay": "نبدأ من اليمين دائمًا: الرقم ٣ في بيت الآحاد، لذلك قيمته ٣ فقط."
+                },
+                {
+                        "stepNumber": 3,
+                        "svgElements": [
+                                "colTens",
+                                "digit1",
+                                "value10"
+                        ],
+                        "textToSay": "ننتقل خطوة إلى اليسار: الرقم ١ في بيت العشرات، يعني ١ عشرة؛ إذن قيمته ١٠."
+                },
+                {
+                        "stepNumber": 4,
+                        "svgElements": [
+                                "colHundreds",
+                                "digit8",
+                                "value800"
+                        ],
+                        "textToSay": "الرقم ٨ في بيت المئات، يعني ٨ مئات؛ إذن قيمته ٨٠٠."
+                },
+                {
+                        "stepNumber": 5,
+                        "svgElements": [
+                                "colThousands",
+                                "digit2",
+                                "value2000"
+                        ],
+                        "textToSay": "الرقم ٢ في بيت الآلاف، يعني ٢ من الألوف؛ إذن قيمته ٢٠٠٠."
+                },
+                {
+                        "stepNumber": 6,
+                        "svgElements": [
+                                "colTenThousands",
+                                "digit4",
+                                "value40000"
+                        ],
+                        "textToSay": "الرقم ٤ في بيت عشرات الألوف، يعني ٤ عشرات ألوف؛ إذن قيمته ٤٠٠٠٠."
+                },
+                {
+                        "stepNumber": 7,
+                        "svgElements": [
+                                "expandedForm",
+                                "ruleBox"
+                        ],
+                        "textToSay": "والآن نجمع القيم المنزلية كلها: ٤٢٨١٣ = ٤٠٠٠٠ + ٢٠٠٠ + ٨٠٠ + ١٠ + ٣. هذه هي صورة العدد المفككة حسب المنازل."
+                }
+        ],
+        "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"40 20 920 600\" width=\"920\" height=\"600\" role=\"img\" aria-label=\"شرح القيم المنزلية للعدد ٤٢٨١٣\">\n  <style>\n    .title{font-family:Tahoma,Arial,sans-serif;font-size:34px;font-weight:700;fill:#1f2937;}\n    .subtitle{font-family:Tahoma,Arial,sans-serif;font-size:20px;fill:#374151;}\n    .label{font-family:Tahoma,Arial,sans-serif;font-size:19px;font-weight:700;fill:#111827;}\n    .digit{font-family:Tahoma,Arial,sans-serif;font-size:42px;font-weight:700;fill:#111827;}\n    .value{font-family:Tahoma,Arial,sans-serif;font-size:25px;font-weight:700;fill:#111827;}\n    .small{font-family:Tahoma,Arial,sans-serif;font-size:18px;fill:#374151;}\n    .math{font-family:Tahoma,Arial,sans-serif;font-size:30px;font-weight:700;fill:#111827;}\n    .cell{stroke:#334155;stroke-width:2;}\n    .arrow{stroke:#64748b;stroke-width:2.2;fill:none;marker-end:url(#arrowHead);}\n  </style>\n  <defs>\n    <marker id=\"arrowHead\" markerWidth=\"10\" markerHeight=\"10\" refX=\"8\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\">\n      <path d=\"M0,0 L8,3 L0,6 Z\" fill=\"#64748b\"/>\n    </marker>\n  </defs>\n\n  <text id=\"title\" x=\"500\" y=\"55\" text-anchor=\"middle\" direction=\"rtl\" class=\"title\">القيم المنزلية في العدد ٤٢٨١٣</text>\n  <text x=\"500\" y=\"88\" text-anchor=\"middle\" direction=\"rtl\" class=\"subtitle\">كل رقم يأخذ قيمته من المنزل الذي يقف فيه</text>\n\n  <g id=\"numberGroup\">\n    <text x=\"500\" y=\"130\" text-anchor=\"middle\" direction=\"rtl\" class=\"small\">العدد</text>\n    <rect x=\"300\" y=\"145\" width=\"400\" height=\"60\" rx=\"14\" fill=\"#f8fafc\" stroke=\"#94a3b8\" stroke-width=\"2\"/>\n    <text id=\"topDigit4\" x=\"370\" y=\"188\" text-anchor=\"middle\" class=\"digit\">٤</text>\n    <text id=\"topDigit2\" x=\"435\" y=\"188\" text-anchor=\"middle\" class=\"digit\">٢</text>\n    <text id=\"topDigit8\" x=\"500\" y=\"188\" text-anchor=\"middle\" class=\"digit\">٨</text>\n    <text id=\"topDigit1\" x=\"565\" y=\"188\" text-anchor=\"middle\" class=\"digit\">١</text>\n    <text id=\"topDigit3\" x=\"630\" y=\"188\" text-anchor=\"middle\" class=\"digit\">٣</text>\n  </g>\n\n  <g id=\"chart\">\n    <path class=\"arrow\" d=\"M370,207 C335,222 225,222 180,245\"/>\n    <path class=\"arrow\" d=\"M435,207 C420,222 365,225 340,245\"/>\n    <path class=\"arrow\" d=\"M500,207 L500,245\"/>\n    <path class=\"arrow\" d=\"M565,207 C580,222 635,225 660,245\"/>\n    <path class=\"arrow\" d=\"M630,207 C665,222 775,222 820,245\"/>\n\n    <g id=\"colTenThousands\">\n      <rect x=\"100\" y=\"250\" width=\"160\" height=\"70\" fill=\"#dbeafe\" class=\"cell\"/>\n      <rect x=\"100\" y=\"320\" width=\"160\" height=\"78\" fill=\"#eff6ff\" class=\"cell\"/>\n      <rect x=\"100\" y=\"398\" width=\"160\" height=\"72\" fill=\"#f8fafc\" class=\"cell\"/>\n      <text x=\"180\" y=\"286\" text-anchor=\"middle\" direction=\"rtl\" class=\"label\">عشرات الألوف</text>\n      <text id=\"digit4\" x=\"180\" y=\"371\" text-anchor=\"middle\" class=\"digit\">٤</text>\n      <text id=\"value40000\" x=\"180\" y=\"445\" text-anchor=\"middle\" class=\"value\">٤٠٠٠٠</text>\n    </g>\n\n    <g id=\"colThousands\">\n      <rect x=\"260\" y=\"250\" width=\"160\" height=\"70\" fill=\"#dcfce7\" class=\"cell\"/>\n      <rect x=\"260\" y=\"320\" width=\"160\" height=\"78\" fill=\"#f0fdf4\" class=\"cell\"/>\n      <rect x=\"260\" y=\"398\" width=\"160\" height=\"72\" fill=\"#f8fafc\" class=\"cell\"/>\n      <text x=\"340\" y=\"286\" text-anchor=\"middle\" direction=\"rtl\" class=\"label\">الألوف</text>\n      <text id=\"digit2\" x=\"340\" y=\"371\" text-anchor=\"middle\" class=\"digit\">٢</text>\n      <text id=\"value2000\" x=\"340\" y=\"445\" text-anchor=\"middle\" class=\"value\">٢٠٠٠</text>\n    </g>\n\n    <g id=\"colHundreds\">\n      <rect x=\"420\" y=\"250\" width=\"160\" height=\"70\" fill=\"#fef3c7\" class=\"cell\"/>\n      <rect x=\"420\" y=\"320\" width=\"160\" height=\"78\" fill=\"#fffbeb\" class=\"cell\"/>\n      <rect x=\"420\" y=\"398\" width=\"160\" height=\"72\" fill=\"#f8fafc\" class=\"cell\"/>\n      <text x=\"500\" y=\"286\" text-anchor=\"middle\" direction=\"rtl\" class=\"label\">المئات</text>\n      <text id=\"digit8\" x=\"500\" y=\"371\" text-anchor=\"middle\" class=\"digit\">٨</text>\n      <text id=\"value800\" x=\"500\" y=\"445\" text-anchor=\"middle\" class=\"value\">٨٠٠</text>\n    </g>\n\n    <g id=\"colTens\">\n      <rect x=\"580\" y=\"250\" width=\"160\" height=\"70\" fill=\"#fee2e2\" class=\"cell\"/>\n      <rect x=\"580\" y=\"320\" width=\"160\" height=\"78\" fill=\"#fef2f2\" class=\"cell\"/>\n      <rect x=\"580\" y=\"398\" width=\"160\" height=\"72\" fill=\"#f8fafc\" class=\"cell\"/>\n      <text x=\"660\" y=\"286\" text-anchor=\"middle\" direction=\"rtl\" class=\"label\">العشرات</text>\n      <text id=\"digit1\" x=\"660\" y=\"371\" text-anchor=\"middle\" class=\"digit\">١</text>\n      <text id=\"value10\" x=\"660\" y=\"445\" text-anchor=\"middle\" class=\"value\">١٠</text>\n    </g>\n\n    <g id=\"colOnes\">\n      <rect x=\"740\" y=\"250\" width=\"160\" height=\"70\" fill=\"#ede9fe\" class=\"cell\"/>\n      <rect x=\"740\" y=\"320\" width=\"160\" height=\"78\" fill=\"#f5f3ff\" class=\"cell\"/>\n      <rect x=\"740\" y=\"398\" width=\"160\" height=\"72\" fill=\"#f8fafc\" class=\"cell\"/>\n      <text x=\"820\" y=\"286\" text-anchor=\"middle\" direction=\"rtl\" class=\"label\">الآحاد</text>\n      <text id=\"digit3\" x=\"820\" y=\"371\" text-anchor=\"middle\" class=\"digit\">٣</text>\n      <text id=\"value3\" x=\"820\" y=\"445\" text-anchor=\"middle\" class=\"value\">٣</text>\n    </g>\n  </g>\n\n  <g id=\"ruleBox\">\n    <rect x=\"160\" y=\"500\" width=\"680\" height=\"45\" rx=\"12\" fill=\"#ecfeff\" stroke=\"#0891b2\" stroke-width=\"2\"/>\n    <text x=\"500\" y=\"529\" text-anchor=\"middle\" direction=\"rtl\" class=\"small\">قاعدة سريعة: قيمة الرقم = الرقم × قيمة منزله</text>\n  </g>\n\n  <g id=\"expandedForm\">\n    <text x=\"500\" y=\"590\" text-anchor=\"middle\" direction=\"ltr\" class=\"math\">٤٢٨١٣ = ٤٠٠٠٠ + ٢٠٠٠ + ٨٠٠ + ١٠ + ٣</text>\n  </g>\n</svg>"
+}
+
+    let currentStepIndex = 0;
+
+    // 2. DOM Initialization
+    const svgContainer = document.getElementById('svgContainer');
+    const narrationText = document.getElementById('narrationText');
+    const stepIndicator = document.getElementById('stepIndicator');
+    const btnBack = document.getElementById('btnBack');
+    const btnNext = document.getElementById('btnNext');
+
+    // Load initial SVG string safely into the DOM container
+    svgContainer.innerHTML = pageData.svg;
+    
+    // Target the SVG nested elements
+    const svgRoot = svgContainer.querySelector('svg');
+
+    // 3. Render State Engine
+    function updateDisplay() {
+        const currentStep = pageData.steps[currentStepIndex];
+        
+        // Update Narratives and counters
+        narrationText.innerText = currentStep.textToSay;
+        stepIndicator.innerText = `الخطوة ${currentStep.stepNumber} من ${pageData.steps.length}`;
+
+        // Handle Button visibility states
+        btnBack.disabled = currentStepIndex === 0;
+        btnNext.disabled = currentStepIndex === pageData.steps.length - 1;
+
+        // 1. Gather historical IDs up to the current step index
+        const currentIds = currentStep.svgElements;
+        const historicalIds = [];
+        
+        for (let i = 0; i <= currentStepIndex; i++) {
+                pageData.steps[i].svgElements.forEach(id => {
+                if (!historicalIds.includes(id)) {
+                        historicalIds.push(id);
+                }
+                });
+        }
+
+        // 2. Ensure layout structural groups (<g>) are never forced invisible by classes
+        const allGroups = svgRoot.querySelectorAll('g');
+        allGroups.forEach(group => {
+                group.classList.remove('svg-hidden', 'svg-faded');
+        });
+
+        // 3. Target the actual renderable shapes inside the SVG
+        const renderableElements = svgRoot.querySelectorAll('rect, text, path, circle, ellipse, line, polyline, polygon, image');
+
+        renderableElements.forEach(element => {
+                const elementId = element.id;
+                const parentGroup = element.closest('g[id]');
+                const parentId = parentGroup ? parentGroup.id : null;
+
+                // Determine if this element (or its parent group) belongs to Current or Past states
+                const isCurrent = currentIds.includes(elementId) || (parentId && currentIds.includes(parentId));
+                const isHistorical = historicalIds.includes(elementId) || (parentId && historicalIds.includes(parentId));
+
+                // Reset visibility classes cleanly
+                element.classList.remove('svg-hidden', 'svg-faded');
+
+                if (isCurrent) {
+                // Element is explicitly selected in the current step -> full visibility
+                // No extra class needed since default style is full visibility
+                } else if (isHistorical) {
+                // Element was revealed in a past step but omitted now -> fade it to 0.5
+                element.classList.add('svg-faded');
+                } else {
+                // Element has not been introduced yet -> completely hide it
+                element.classList.add('svg-hidden');
+                }
+        });
+        }
+
+    // 4. Input Navigation handler
+    function changeStep(direction) {
+        const nextIndex = currentStepIndex + direction;
+        if (nextIndex >= 0 && nextIndex < pageData.steps.length) {
+            currentStepIndex = nextIndex;
+            updateDisplay();
+        }
+    }
+
+    // Initialize application view state on window load
+    updateDisplay();
+</script>
+
+</body>
+</html>

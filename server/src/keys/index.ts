@@ -1,0 +1,9 @@
+import { ENV_TARGET } from '../config.js';
+import { CLOUD_ACCESS_KEY_PROD, CLOUD_PUBLIC_KEY_PROD } from './prod.js';
+import { CLOUD_ACCESS_KEY_TEST, CLOUD_PUBLIC_KEY_TEST } from './test.js';
+
+export const CLOUD_ACCESS_KEY =
+    ENV_TARGET == 'PROD' ? CLOUD_ACCESS_KEY_PROD : CLOUD_ACCESS_KEY_TEST;
+
+export const CLOUD_PUBLIC_KEY =
+    ENV_TARGET == 'PROD' ? CLOUD_PUBLIC_KEY_PROD : CLOUD_PUBLIC_KEY_TEST;

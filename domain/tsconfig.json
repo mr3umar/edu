@@ -1,0 +1,10 @@
+{
+        "extends": "../tsconfig",
+        "include": ["src/**/*"],
+        "compilerOptions": {
+                "target": "es2017",
+                "outDir": "lib",
+                "declaration": true
+        }
+      }
+      

@@ -1,0 +1,951 @@
+
+.panel {
+  /* The main area (caption/options) is this wide whether the board is open or
+     not, so its text keeps the same line breaks as the board comes and goes.
+     It's what's left beside the board in the wide panel:
+     800px panel - 2 x 15px padding - 400px board - 14px gap. */
+  --panel-main-width: 356px;
+
+  position: fixed;
+
+  bottom: 8px;
+  left: 50%;
+
+  transform: translateX(-50%);
+
+
+  z-index: 100;
+  width: 500px;
+  border-radius: 20px;
+  min-height: 50px;
+
+  background: #373737a6;
+  box-shadow: 0 0px 8px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(8px);
+
+  /* Width and the content area's height are animated by usePanelLayout, in
+     sequence with the parts fading, so there are no CSS transitions here. */
+}
+
+.panel.up {
+
+  bottom: auto;
+  top: 8px
+}
+.panel.panel-content-2 {
+  width: 800px;
+}
+
+
+.panel .tools-bar {
+  height: 60px;
+  padding: 0 10px;
+
+}
+.panel .tools-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+}
+
+.panel .tools-bar > div:nth-child(1) {
+  justify-self: start;
+}
+
+.panel .tools-bar > div:nth-child(2) {
+  justify-self: center;
+}
+
+.panel .tools-bar > div:nth-child(3) {
+  justify-self: end;
+}
+
+.control-group {
+  justify-self: start;
+  display: flex;
+  gap: 4px;
+}
+
+.controls-right {
+  justify-self: end;
+  display: flex;
+  gap: 6px;
+}
+
+.control-btn {
+  width: 38px;
+  height: 38px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+
+  background-color: rgb(2555 255 255 / 30%);
+  color: #000;
+
+  cursor: pointer;
+
+  transition: all 0.15s ease;
+}
+
+.control-btn svg {
+  width: 18px;
+  height: 18px;
+
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Hover */
+.control-btn:hover {
+  background: #f8f8f8;
+  border-color: #c5c5c5;
+  color: #222;
+}
+
+/* Active toggle */
+.control-btn.active {
+  color: #111;
+
+  background-color: rgb(2555 255 255 / 80%);
+
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Active + hover */
+.control-btn.active:hover {
+  background: #dedede;
+}
+
+/* Click feedback */
+.control-btn:active {
+  transform: translateY(1px);
+}
+
+.panel .tools-bar .input-wrapper {
+  position: relative;
+
+  width: 190px;
+  height: 36px;
+  padding: 7px 14px;
+
+  border: 0;
+  border-radius: 12px;
+  background: #ffffff1b;
+
+  display: flex;
+  align-items: center;
+  /* The whole pill focuses the input (it's a label), so show that */
+  cursor: text;
+}
+
+.panel .tools-bar .input-wrapper input {
+  width: 100%;
+  height: 100%;
+
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+
+  font-size: 14px;
+  color: #ffffff;
+  caret-color: #ffffffc7;
+}
+
+.panel .tools-bar .input-wrapper input::placeholder {
+  color: #ffffff75;
+}
+
+/*
+Recommended concept
+Off: the mic is off; a plain orb with a mic icon.
+Speaking: orb expands/contracts with a stronger pulse, with a soft outer ring.
+Listening/processing: slower rotating/pulsing ring.
+Click while speaking: immediately stops → returns to Listening.
+Click while off: starts the mic.
+Keep it circular, around 44–48px, so it feels like an AI assistant rather than a normal control.
+
+type AIStatus =
+| "off"
+| "listening"
+| "thinking"
+| "speaking";
+*/
+.ai-control {
+  position: relative;
+
+  width: 52px;
+  height: 52px;
+  padding: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: transparent !important;
+  border: none !important;
+  outline: none;
+
+  border-radius: 50%;
+  box-shadow: none !important;
+
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.ai-core {
+  position: relative;
+  z-index: 2;
+
+  width: 40px;
+  height: 40px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  background: #fff;
+  border: 1px solid #d8d8d8;
+
+  color: #555;
+  font-size: 19px;
+
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.ai-ring {
+  position: absolute;
+  inset: 4px;
+
+  border-radius: 50%;
+  border: 2px solid transparent;
+
+  pointer-events: none;
+}
+
+
+/* READY and LISTENING are status only (nothing to tap), so just the waves
+   (below) on black: no border or shadow. */
+
+.ai-control.ready .ai-core,
+.ai-control.listening .ai-core {
+  /* Black water under light waves (below) */
+  background: #111;
+  border: 0;
+  box-shadow: none;
+}
+
+.ai-control.ready .ai-core,
+.ai-control.listening .ai-core {
+  color: #fff;
+}
+
+/* Waves (ready, listening): grey waves, lightest at the bottom, drift across
+   the lower part of the black icon. Each wave is two wave-lengths wide and
+   slides by one, so the loop is seamless; the layers move at different speeds
+   and directions so they don't march in step. */
+.ai-control.ready .ai-core,
+.ai-control.listening .ai-core {
+  overflow: hidden;
+}
+
+.ai-waves {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ai-wave {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 200%;
+  height: 100%;
+  animation: ai-wave-drift linear infinite;
+}
+
+.ai-wave-back {
+  fill: #6b7280;
+  opacity: 0.8;
+  animation-duration: 3.4s;
+}
+
+.ai-wave-mid {
+  fill: #9ca3af;
+  opacity: 0.75;
+  animation-duration: 2.6s;
+  animation-direction: reverse;
+}
+
+.ai-wave-front {
+  fill: #d1d5db;
+  opacity: 0.7;
+  animation-duration: 1.9s;
+}
+
+/* Ready is the quiet state: the same waves, just slower and without the
+   bobbing crests, so the switch to listening stands out by its motion. */
+.ai-control.ready .ai-wave-back { animation-duration: 7s; }
+.ai-control.ready .ai-wave-mid { animation-duration: 5.5s; }
+.ai-control.ready .ai-wave-front { animation-duration: 4.2s; }
+
+/* Switching between ready and listening fades the colours (the icon's
+   elements stay the same, only the state class changes). */
+.ai-wave {
+  transition: fill 0.6s ease, opacity 0.6s ease;
+}
+
+/* Listening is brighter, for more contrast: the bottom wave is white and the
+   others lighter. */
+.ai-control.listening .ai-wave-back { fill: #9ca3af; opacity: 0.85; }
+.ai-control.listening .ai-wave-mid { fill: #d1d5db; opacity: 0.85; }
+.ai-control.listening .ai-wave-front { fill: #fff; opacity: 1; }
+
+@keyframes ai-wave-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* The waves pick up with activity, like the sea: calm when ready (above),
+   livelier while listening. The water level stays put: each layer's crests grow taller and shorter from
+   its base, at its own pace and out of step with the others (the negative
+   delays start them mid-cycle), while drifting sideways faster. */
+.ai-wave path {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+.ai-control.listening .ai-wave path {
+  --bob-low: 0.9;
+  --bob-high: 1.1;
+  animation: ai-wave-bob ease-in-out infinite alternate;
+}
+
+.ai-control.listening .ai-wave-back { animation-duration: 1.8s; }
+.ai-control.listening .ai-wave-mid { animation-duration: 1.4s; }
+.ai-control.listening .ai-wave-front { animation-duration: 1s; }
+
+.ai-control.listening .ai-wave-back path { animation-duration: 1.55s; animation-delay: -0.6s; }
+.ai-control.listening .ai-wave-mid path { animation-duration: 1.2s; animation-delay: -1.1s; }
+.ai-control.listening .ai-wave-front path { animation-duration: 0.95s; animation-delay: -0.3s; }
+
+@keyframes ai-wave-bob {
+  from {
+    transform: scaleY(var(--bob-low));
+  }
+  to {
+    transform: scaleY(var(--bob-high));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-wave,
+  .ai-wave path {
+    animation: none;
+  }
+}
+
+
+
+/* Ready and listening are status only: tapping does nothing, so no pointer
+   and no hover/press feedback. The icon acts only to stop an answer. */
+.ai-control[aria-disabled='true'] {
+  cursor: default;
+}
+
+.ai-control[aria-disabled='true']:hover .ai-core,
+.ai-control[aria-disabled='true']:active .ai-core {
+  transform: none;
+}
+
+
+/* THINKING, SPEAKING and PAUSED: a white button with a black icon (stop,
+   pause, resume). Paused is still: no ring. */
+
+.ai-control.thinking .ai-core,
+.ai-control.speaking .ai-core,
+.ai-control.paused .ai-core {
+  background: #fff;
+  color: #111;
+  border-color: #fff;
+}
+
+/* Thinking: a thin white arc circling the button while the answer is on its
+   way, bright at the head and fading out along its tail. Drawn as a conic
+   gradient masked down to a 1.5px ring. */
+.ai-control.thinking .ai-ring {
+  inset: 2px;
+  border: 0;
+  background: conic-gradient(rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0) 30%, #fff 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+  animation: ai-thinking-spin 1s linear infinite;
+}
+
+@keyframes ai-thinking-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-control.thinking .ai-ring {
+    animation-duration: 2.4s;
+  }
+}
+
+
+/* Speaking: a white ring pulsing out from the button */
+
+.ai-control.speaking .ai-ring {
+  border-color: rgba(255, 255, 255, 0.7);
+
+  animation: ai-speaking 1.2s ease-in-out infinite;
+}
+
+
+@keyframes ai-speaking {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+
+  50% {
+    transform: scale(1.25);
+    opacity: 0.25;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+}
+
+
+/* Interaction */
+
+.ai-control:hover .ai-core {
+  transform: scale(1.05);
+}
+
+.ai-control:active .ai-core {
+  transform: scale(0.95);
+}
+
+.ai-control:focus {
+  outline: none;
+}
+
+.ai-control:focus-visible .ai-core {
+  box-shadow:
+    0 0 0 3px rgba(99, 91, 255, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.1);
+}
+.panel-content-whiteboard {
+  width: 200px;
+  background-color: #fff;
+  color: #1a1a1a;
+  padding: 4px;
+  border-radius: 15px;
+  height: 250px;
+
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+
+.panel-content {
+  border-radius: 20px 20px 0 0;
+  padding: 15px;
+}
+
+
+
+.panel-content {
+  display: flex;
+  justify-content: center;
+  /* Everything sits at the bottom: the main area on its own, and beside the
+     board with their bottom edges lined up. */
+  align-items: flex-end;
+
+  height: 290px;
+  overflow: hidden;
+}
+
+
+/* Room for the playback controls under the whiteboard */
+.panel.has-playback .panel-content {
+  height: 340px;
+}
+
+/* No whiteboard showing (just the caption and/or options): the height
+   follows the content, up to the usual size, instead of the whiteboard's
+   fixed height. */
+.panel.main-only:not(.minimized) .panel-content {
+  height: auto;
+  max-height: 290px;
+}
+
+/* On its own, the main area sits at the start side, under the AI icon (right
+   in Arabic, left in English), rather than centred. */
+.panel.main-only .panel-content {
+  justify-content: flex-start;
+}
+
+/* The hidden whiteboard keeps its 250px height (only its width shrinks), which
+   would hold the content open and leave space above and below the caption. */
+.panel.main-only .panel-content-whiteboard {
+  height: 0;
+  padding: 0;
+}
+
+
+/* =================================
+   Both hidden
+   ================================= */
+
+  .panel-content-0 .panel-content {
+  opacity: 0;
+  height: 0;
+  padding: 0;
+}
+.panel.minimized .panel-content {
+  opacity: 0;
+  height: 0;
+  padding: 0;
+}
+
+/* With Previous/Next under the board, lift the main area by that row (40px)
+   and the gap above it (10px), so it lines up with the board's own bottom
+   edge rather than the buttons'. */
+.panel.has-playback .panel-content-main {
+  margin-bottom: 50px;
+}
+.panel.panel-content-2.minimized {
+  width: 500px;
+}
+
+
+/* =================================
+   Common panel
+   ================================= */
+
+.panel-content-main,
+.panel-content-whiteboard {
+  overflow: hidden;
+
+  opacity: 0;
+}
+
+.panel-content-main.visible,
+.panel-content-whiteboard.visible {
+  opacity: 1;
+}
+
+/* Sized and zoomed by fitToBox(); `flex: none` so the flex layout doesn't
+   squeeze it back to the board's width. */
+.panel-content-whiteboard-content {
+  flex: none;
+}
+
+
+/* =================================
+   MAIN
+   ================================= */
+
+.panel-content-main {
+  width: 0;
+}
+
+.panel-content-main.visible {
+  width: 0;
+}
+
+
+/* =================================
+   WHITEBOARD
+   ================================= */
+
+.panel-content-whiteboard {
+  width: 0;
+}
+
+.panel-content-whiteboard.visible {
+  width: 400px;
+  flex: 0 0 400px;
+}
+
+/* The main area and the board switch size at once; their fading in and out
+   is sequenced with the panel's resizing by usePanelLayout. */
+
+
+/* =================================
+   Only one panel
+   ================================= */
+
+/* Main only */
+.panel-content-1
+.panel-content-main.visible {
+  width: var(--panel-main-width);
+  flex: 0 0 var(--panel-main-width);
+}
+
+
+/* =================================
+   Both panels
+   ================================= */
+
+.panel-content-2 .panel-content {
+  /* Centred: identical once everything fits, and it keeps a board centred
+     while the main area grows in beside it (see usePanelLayout). */
+  justify-content: center;
+  /* Space between the main area (caption/options) and the whiteboard */
+  gap: 14px;
+}
+
+.panel-content-2
+.panel-content-main.visible {
+  width: var(--panel-main-width);
+  flex: 0 0 var(--panel-main-width);
+  min-width: 0;
+}
+
+
+
+.panel-message {
+  background: #fff;
+    color: #1a1a1a;
+    padding: 8px 15px;
+    /* Square at the tail's corner (see .panel-message::after) */
+    border-radius: 20px;
+    border-end-start-radius: 0;
+    /* Room for its tail, which the main area would otherwise clip */
+    margin-bottom: 7px;
+    display: inline-block;
+    min-width: 250px;
+}
+
+/* The options bubble animates in on its own, so it also has an entrance when
+   the main area is already showing (e.g. under a caption). */
+.panel-message {
+  animation: panel-message-in 250ms ease both;
+}
+
+@keyframes panel-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-message {
+    animation-name: panel-message-fade-in;
+  }
+
+  @keyframes panel-message-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+}
+
+/* Closed caption: what the tutor is saying, above the options message. Long
+   captions scroll rather than grow the panel. */
+.panel-caption {
+  /* Room for the bubble's tail above an options message below it */
+  margin-bottom: 14px;
+  padding: 8px 14px;
+
+  /* A speech bubble: see .panel-caption::after for its tail */
+  border-radius: 16px;
+  border-end-start-radius: 0;
+  background: #fff;
+  color: #1a1a1a;
+
+  font-size: 15px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* The caption's text scrolls inside the bubble: exactly four lines (15px text
+   at 1.6 line height), so a long caption scrolls by whole lines instead of
+   cutting one in half. */
+.panel-caption-text {
+  max-height: calc(4 * 1.6em);
+  overflow-y: auto;
+}
+
+/* Chat-bubble tail on the caption and options bubbles: a small point curving
+   down out of the bubble's bottom corner on the side the text starts from
+   (bottom-right in Arabic, bottom-left in English). That corner of the bubble
+   is square, so the tail flows out of its edge. */
+.panel-caption,
+.panel-message {
+  position: relative;
+}
+
+.panel-caption::after,
+.panel-message::after {
+  content: '';
+  position: absolute;
+  /* Overlaps the bubble by 1px, so no seam shows where they meet */
+  top: calc(100% - 1px);
+  inset-inline-start: 0;
+  width: 10px;
+  height: 8px;
+  background: #fff;
+  clip-path: path('M0 0 H10 C6.5 1.5 3 4 0 8 Z');
+}
+
+.panel-caption:dir(rtl)::after,
+.panel-message:dir(rtl)::after {
+  transform: scaleX(-1);
+}
+
+/* The word being spoken (estimated from the audio's progress) */
+.caption-word {
+  transition: color 120ms ease;
+}
+
+.caption-word.active {
+  color: #2563eb;
+}
+
+/* Last in the main area: just room for its tail, which the main area (it
+   clips its overflow) would otherwise cut off. */
+.panel-caption:last-child {
+  margin-bottom: 7px;
+}
+
+/* CC toggle, before Move up/down: a text button like the panel's other
+   controls, no border; solid white when captions are on (like the mic). */
+.cc-btn {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.cc-btn.on {
+  background: #fff;
+  color: #111;
+}
+
+.pannel-message-option {
+  background: #00000026;
+    color: #1a1a1a;
+    padding: 6px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    margin: 5px 0;
+}
+.pannel-message-option:hover {
+  background: #00000015;
+}
+
+.pannel-message-option:active {
+  background: #00000015;
+  transform: scale(0.98);
+}
+
+/* Inside the core: waves (ready/listening), stop square (thinking), pause
+   (speaking), play (paused) */
+.ai-core-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* A play triangle's visual centre is left of its box centre; nudge it. */
+.ai-play-icon {
+  margin-left: 2px;
+}
+
+.mic-icon {
+  width: 19px;
+  height: 19px;
+}
+
+.stop-square {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: currentColor;
+}
+
+
+/* =================================
+   Playback controls (under the whiteboard)
+   ================================= */
+
+/* The whiteboard and its controls stack as one flex item, so the controls
+   centre on the whiteboard even when the main area sits beside it. */
+.panel-board-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+/* Its flex-basis sizes the row it used to sit in; in the column it would
+   become a height, so the whiteboard keeps its own width/height here. */
+.panel-board-column .panel-content-whiteboard {
+  flex: none;
+}
+
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 6px;
+
+  border-radius: 999px;
+  background: #ffffff59;
+}
+
+.playback-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #1a1a1a;
+
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.playback-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.playback-btn:hover:not(:disabled) {
+  background: #ffffff80;
+}
+
+.playback-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.playback-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.playback-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.35);
+}
+
+/* Speed toggle beside the AI button */
+/* The mic, beside the AI icon: a round button like the panel's other
+   controls, black when off and green when on. */
+.mic-btn {
+  align-self: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+
+  border-radius: 999px;
+  background: #ffffff59;
+  color: #1a1a1a;
+}
+
+.mic-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mic-btn.on {
+  background: #fff;
+  color: #16a34a;
+}
+
+.mic-btn:hover:not(:disabled) {
+  background: #ffffffcc;
+}
+
+.mic-btn.on:hover:not(:disabled) {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+/* Starting: waits until the mic is up */
+.mic-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mic-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.35);
+}
+
+.rate-btn {
+  align-self: center;
+  /* Fixed size, so it doesn't jump between the icon and the text values */
+  width: 36px;
+  height: 36px;
+  flex: none;
+  padding: 0;
+
+  border-radius: 999px;
+  background: #ffffff59;
+  color: #1a1a1a;
+
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Filled icon: undo .control-btn's outline-icon styling */
+.rate-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  stroke: none;
+}
+
+/* Slow or fast: a brighter background so a changed speed stands out at a glance */
+.rate-btn.changed {
+  background: #ffffffcc;
+}
+
+.rate-btn.changed:hover {
+  background: #fff;
+}

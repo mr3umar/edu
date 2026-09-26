@@ -1,0 +1,47 @@
+/* Long division, on top of mathBoard.css: each part keeps one colour (the
+   difference after subtracting, the digit brought down beside it, ...), so a
+   student can follow where every number comes from. */
+.long-division {
+  --ld-bracket: 0.42em;
+}
+
+.ld-dividend { color: var(--mb-blue); }
+.ld-quotient { color: var(--mb-green); }
+.ld-product { color: var(--mb-orange); }     /* multiply */
+.ld-difference { color: var(--mb-violet); }  /* subtract */
+.ld-bringDown { color: var(--mb-pink); }     /* bring down */
+.ld-minus { color: var(--mb-ink); }
+
+.ld-divisor {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding-inline: 0.2em;
+  font-weight: 700;
+  color: var(--mb-red);
+}
+
+/* The bar over the dividend; the quotient sits on top of it */
+.ld-bar {
+  align-self: start;
+  height: 0;
+  border-top: var(--mb-line) solid var(--mb-ink);
+}
+
+.ld-bracket {
+  align-self: stretch;
+  width: 100%;
+  height: 1.3em;
+  overflow: visible;
+}
+
+.ld-bracket path {
+  fill: none;
+  stroke: var(--mb-ink);
+  stroke-width: var(--mb-line);
+  vector-effect: non-scaling-stroke;
+}
+
+.ld-remainder {
+  color: var(--mb-violet);
+}

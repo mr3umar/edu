@@ -1,0 +1,41 @@
+{
+  "name": "edu-ai-domain",
+  "version": "1.0.0",
+  "author": {
+    "name": "aaa.sa",
+    "email": "info@aaa.sa"
+  },
+  "repository": "https://github.com/umar-alyahya/gormic-crm",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "type": "module",
+  "main": "lib/index.mjs",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts"
+    },
+    "./*": "./*.mjs"
+  },
+  "sideEffects": false,
+  "files": [
+    "lib",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "bund dev",
+    "build": "bund build",
+    "clean": "rm -rf dist",
+    "flush": "npm run clean && rm -rf node_modules package-lock.json",
+    "mono:build": "npm run build",
+    "mono:release": "npm publish"
+  },
+  "dependencies": {
+
+    "@dija/gormic-cloud-public": "^1.0.23"
+  },
+  "devDependencies": {
+  }
+}

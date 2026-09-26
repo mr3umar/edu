@@ -1,0 +1,55 @@
+/* Shared by the whiteboard's column-arithmetic boards (long division, long
+   multiplication): a transparent, centred grid of digit cells, one column per
+   place value, colour-coded the way it's taught. Each board maps its parts
+   onto the palette in its own stylesheet. */
+.math-board {
+  --mb-cell: 0.78em;
+  --mb-line: 2px;
+
+  --mb-ink: #475569;    /* frame, rules, signs */
+  --mb-blue: #1d4ed8;
+  --mb-red: #dc2626;
+  --mb-green: #15803d;
+  --mb-orange: #ea580c;
+  --mb-violet: #7c3aed;
+  --mb-pink: #db2777;
+
+  display: flex;
+  justify-content: center;
+  padding: 0.3em 0.5em;
+
+  font-size: 30px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--mb-ink);
+  background: transparent;
+}
+
+.mb-grid {
+  display: inline-grid;
+  grid-auto-rows: auto;
+  align-items: center;
+}
+
+.mb-digit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.3em;
+  font-weight: 600;
+}
+
+.mb-rule {
+  align-self: center;
+  height: 0;
+  margin: 0.08em 0;
+  border-top: var(--mb-line) solid var(--mb-ink);
+}
+
+/* A small word beside a row, e.g. "remainder" */
+.mb-label {
+  padding-inline: 0.45em;
+  font-size: 0.45em;
+  font-weight: 700;
+  white-space: nowrap;
+}

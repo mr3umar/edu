@@ -1,0 +1,10 @@
+/* Sized by fitFrameToBox once its content has loaded; nothing shows until then. */
+.html-board {
+  display: block;
+  width: 0;
+  height: 0;
+  border: 0;
+  background: transparent;
+  /* Must match the frame document's, or the browser paints the frame opaque */
+  color-scheme: light;
+}

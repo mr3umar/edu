@@ -1,0 +1,10 @@
+/* Long multiplication, on top of mathBoard.css: each part keeps one colour,
+   and the partial products take turns, so the shifted rows stand apart. */
+.lm-multiplicand { color: var(--mb-blue); }
+.lm-multiplier { color: var(--mb-red); }
+.lm-sum { color: var(--mb-green); }
+.lm-sign { color: var(--mb-ink); }
+
+.lm-partialProduct.lm-partial-0 { color: var(--mb-orange); }
+.lm-partialProduct.lm-partial-1 { color: var(--mb-violet); }
+.lm-partialProduct.lm-partial-2 { color: var(--mb-pink); }
