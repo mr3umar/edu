@@ -25,7 +25,7 @@ export type TextDelegate = {
 
 export type RecordUsage = (cost: number, usage: {type: 'tokens' | 'per-audio' | 'per-charachter', tokens?: {input: number, output: number}, charactersCount?: number, audioMin?: number, info?: string}) => Promise<void>
 export type LinesDelegate = {
-        onMessage: (index: number, stepId: string, lang: string, lineToSay: string, htmlForBoard: AgentLine["richHtmlAndSvgForBoard"] | null, abortSignal: AbortSignal) => Promise<void>
+        onMessage: (index: number, stepId: string, lang: string, lineToSay: string, htmlForBoard: AgentLine["boardContent"] | null, abortSignal: AbortSignal) => Promise<void>
         onCompleted: () => Promise<void>
         callTool: (msg: {name: string, args?: any}) => Promise<any>
         recordUsage: RecordUsage

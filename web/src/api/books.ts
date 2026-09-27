@@ -49,6 +49,15 @@ export async function showLaser(pageNumber: string | undefined, data: ShowLaserD
         if(_onLaserZonesUpdated[pageNumber]) {
                 _onLaserZonesUpdated[pageNumber](data)
         }
+        _laserListeners.forEach(listener => listener(data))
+}
+
+// Anyone who wants to know when the laser points somewhere (e.g. the tutor
+// panel, to move out of the way). Returns the unsubscribe.
+const _laserListeners = new Set<(data: ShowLaserData) => void>()
+export function onLaserShown(listener: (data: ShowLaserData) => void) {
+        _laserListeners.add(listener)
+        return () => { _laserListeners.delete(listener) }
 }
 export async function goToPage(pageNumber: string) {
  
@@ -201,11 +210,42 @@ export async function clarifyPart(partId: string) {
         })
 }
 
+// A background job the backend reports progress on ('ai-task'), e.g.
+// task 'page-analysis' for the page at `pageIndex` (its index in book.pages).
+// ('stopped' is set here, when the user stops a task; the backend reports
+// the other three.)
+export type AiTask = {
+        task: string
+        pageIndex?: number
+        status: 'started' | 'completed' | 'failed' | 'stopped'
+}
+
 // Set by the book reader while it's open; book-only actions do nothing elsewhere.
 export type BooksDelegate = {
         goToPage: (pageNumber: string) => void
         openTutorial: (tutorialId: string) => void
         changeTutrialStep: (tutorialId: string, stepNumber: number) => void
+        onAiTask: (task: AiTask) => void
+}
+
+// Goes to the open book (e.g. a page's scan) and to the tutor panel's task list.
+export function handleAiTask(task: AiTask) {
+        _delegate?.onAiTask(task)
+        _tutorDelegate?.onAiTask(task)
+}
+
+// The user stopped a running task: tell the backend, and stop it here now
+// rather than waiting to hear back.
+export function stopAiTask(task: AiTask) {
+        _socket.send({
+                event: 'stop-task',
+                task: task.task,
+                pageIndex: task.pageIndex,
+                currentBookUid: _currentBookUid,
+                currentPageIndex: _currentPageIndex,
+                language: getCurrentLanguage(),
+        })
+        handleAiTask({ ...task, status: 'stopped' })
 }
 let _delegate: BooksDelegate | undefined
 export async function setBooksDelegate(delegate: BooksDelegate | undefined) {
@@ -218,6 +258,7 @@ export type TutorDelegate = {
         showCaption: (text: string | undefined) => void
         setAiAgentStatus: (status: AiAgentStatus) => void,
         addMessage: (msg: Message<any>) => void,
+        onAiTask: (task: AiTask) => void,
 }
 let _tutorDelegate: TutorDelegate | undefined
 export function setTutorDelegate(delegate: TutorDelegate | undefined) {

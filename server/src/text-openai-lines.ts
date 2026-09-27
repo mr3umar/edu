@@ -37,7 +37,7 @@ const DocumentTeachingSchema = z.object({
             // richHtmlAndSvgForBoard: z.string().nullable().describe("to write to the board with rich html/svg/MathML content, or 'null' if no visual is needed. board dimensions: width: 400px, height: 250px." ),
 
 
-            richHtmlAndSvgForBoard: z.object({
+            boardContent: z.object({
                 type: z.enum([
                     "general",
                     "simpleDivision",
@@ -52,11 +52,11 @@ const DocumentTeachingSchema = z.object({
                     "factorTree",
                     "probabilityTree"
                 ]).describe(
-                    "identifies what the board content represents, not the markup format. Use the most specific applicable type; use 'general' only when no specialized type applies. Specialized types include 'longDivision', 'longMultiplication', 'columnArithmetic', 'polynomialDivision', 'syntheticDivision', 'numberLine', 'coordinateGraph', 'geometryDiagram', 'factorTree', and 'probabilityTree'"
+                    "Identifies what the board content represents. Use the most specific applicable type; use general only when no specialized type applies. Specialized types include 'longDivision', 'longMultiplication', 'columnArithmetic', 'polynomialDivision', 'syntheticDivision', 'numberLine', 'coordinateGraph', 'geometryDiagram', 'factorTree', and 'probabilityTree'."
                 ),
 
-                content: z.string().describe(
-                "HTML/SVG/MathML content to render on the board. Board dimensions: 400x250px."
+                richHtmlWithSVGAndMathML: z.string().describe(
+                    "Rich html content inside root div, sized for a 400px × 250px board. Include inline SVG when shapes or diagrams are needed, and use MathML (<math>...</math>) for all mathematical expressions and notation."
                 )
             }).nullable().describe(
                 "Visual content for the board, or null when no visual is needed."
@@ -371,7 +371,7 @@ export async function initOpenAILiveLines(bookId: string | undefined, wsClient: 
                     if(activeAbortController?.signal.aborted) {
                         return;
                     }
-                    delegate.onMessage(index, line.stepId, line.lang, line.textToSay, line.richHtmlAndSvgForBoard, activeAbortController!.signal);
+                    delegate.onMessage(index, line.stepId, line.lang, line.textToSay, line.boardContent, activeAbortController!.signal);
                   }, () => {
                     if(activeAbortController?.signal.aborted) {
                         return;
@@ -620,9 +620,9 @@ export type BoardContentType = "general" | "simpleDivision" | "longDivision" | "
     stepId: string;
     lang: string;
     textToSay: string;
-    richHtmlAndSvgForBoard: {
+    boardContent: {
         type: BoardContentType,
-        content: string;
+        richHtmlWithSVGAndMathML: string;
     } | null;
   };
   

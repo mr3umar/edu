@@ -4,6 +4,7 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import he from 'he';
 import { calculateCost } from "./pricing.js";
+import { PageAnalysisE } from "edu-ai-domain";
 
 
 dotenv.config();
@@ -80,7 +81,7 @@ export function denormalize2(min_x: number, min_y: number, w: number, h: number)
 export const IMG_W = 637;
 export const IMG_H = 821;
 
-export async function analyzeTextbookImageWithGemini(filePath: string) {
+export async function analyzeTextbookImageWithGemini(filePath: string, imageWidth: number, imageHeight: number) {
 
   // const model = "gemini-2.5-pro";
   // Input tokens: 1044 costs: 0.0013050000000000002, output: 7893 costs: 0.07893 model: gemini-2.5-pro. Details: {"promptTokenCount":1044,"candidatesTokenCount":7893,"totalTokenCount":20604,"promptTokensDetails":[{"modality":"TEXT","tokenCount":786},{"modality":"IMAGE","tokenCount":258}],"thoughtsTokenCount":11667,"serviceTier":"standard"}  
@@ -130,15 +131,17 @@ export async function analyzeTextbookImageWithGemini(filePath: string) {
   // Convert to absolute pixels for your final application use
   return rawData.parts.map((part: any) => {
   
-        part.content = he.decode(part.content);
-  
-        return {
-          ...part,
-          pixel_coordinates: denormalize(
+        const partData: PageAnalysisE["data"]["parts"]["0"] = {
+          id: part.id,
+          type: part.type,
+          content: he.decode(part.content),
+          parentId: part.parent_id,
+          coordinates: denormalize(
             part.coordinates.min_x, part.coordinates.min_y,
             part.coordinates.max_x, part.coordinates.max_y,
-            IMG_W, IMG_H
+            imageWidth, imageHeight
           )
         }
+        return partData
       });
 }

@@ -328,7 +328,7 @@ export async function initGeminiLiveLines(bookId: string, wsClient: WebSocket, d
 
                 const splitter = new JsonLineSplitter((index, line) => {
                     console.log("LLLL:" + JSON.stringify(line));
-                    delegate.onMessage(index, line.stepId, line.lang, line.textToSay, line.richHtmlAndSvgForBoard, activeAbortController!.signal);
+                    delegate.onMessage(index, line.stepId, line.lang, line.textToSay, line.boardContent, activeAbortController!.signal);
                 });
 
                 while (!currentResult.done) {

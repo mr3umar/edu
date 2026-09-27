@@ -19,6 +19,8 @@ import { ocrSpace } from 'ocr-space-api-wrapper';
 import { OCRSpaceResponse, RecordUsage } from './types.js';
 import { getBookStructure2 } from './book-structure-service-2.js';
 import { getOrCreateThumbnail, isValidThumbnailSize } from './thumbnail.js';
+import { analyzeTextbookImageWithGemini, denormalize2, IMG_H, IMG_W } from './ocr-service.js';
+import { DocumentRoot, transformToGlobalWordLayout } from './functions.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -208,6 +210,36 @@ const getServices = async () => {
         }
     }
 
+    const analyzePage: Context.analyzePage = async (scope, bookUid, pageIndex, pageWidth, pageHight) => {
+
+        const imagePath = path.join(__dirname, '../files/pdf-images/', bookUid, String(pageIndex));
+
+        let parts = await analyzeTextbookImageWithGemini(imagePath, pageWidth, pageHight)
+
+        const wordsRes = await transformToGlobalWordLayout(parts)
+        
+        parts = wordsRes.parts
+
+        const words = wordsRes.words
+        .map((word: any) => {
+            const d = denormalize2(
+                word.x,
+                word.y,
+                pageWidth, pageHight
+            )
+            return {
+                ...word,
+                x: d.x,
+                y: d.y, 
+            }
+        });
+
+        return {
+            parts,
+            words,
+        }
+    }
+
     const services = initServices(
         APP_ID,
         servicesLib,
@@ -224,7 +256,8 @@ const getServices = async () => {
             return USERS_IAM
         },
         getClientUserId: async (scope) => context.getUserId(scope),
-        getSource: async () => APP_ID
+        getSource: async () => APP_ID,
+        analyzePage,
     }, {
         tajData,
         cloud: {

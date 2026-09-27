@@ -1,4 +1,5 @@
 import { BookE } from './entities/Book.js';
+import { PageAnalysisE } from './entities/PageAnalysis.js';
 import { ExcelBook, Scope, ServiceDef, ServiceResult } from './types.js';
 
 export namespace Context {
@@ -26,5 +27,10 @@ export namespace Context {
         bookTitle: string,
         sections: {sectionIndex: number; title: string}[]
         pages: {pageIndex: number; sectionIndex: number}[]
+    }>
+    export type analyzePage = (scope: any, bookUid: string, pageIndex: number, pageWidth: number, pageHight: number) => Promise<{
+        parts: PageAnalysisE["data"]["parts"],
+        words: PageAnalysisE["data"]["words"],
+        
     }>
 }

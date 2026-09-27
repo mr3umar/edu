@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../App';
 import type { AiAgentStatus, BoardData, Message, MessageOptionsData, StepId } from '../../types/book';
-import { cancelAnswer, onBoardContentUpdated, pauseAnswer, resumeAnswer, setCurrentStepId, setTutorDelegate } from '../books';
-import { TutorContext, type TutorContextType } from './context';
+import { cancelAnswer, onBoardContentUpdated, stopAiTask, pauseAnswer, resumeAnswer, setCurrentStepId, setTutorDelegate } from '../books';
+import { TutorContext, type AiTaskItem, type TutorContextType } from './context';
 
 // The AI tutor's state: conversation, mic/speaking status and whiteboard.
 // Mounted once for the whole app, so the tutor can be asked from any page;
@@ -10,6 +10,9 @@ import { TutorContext, type TutorContextType } from './context';
 // How long "thinking" can last with no audio before it's assumed the backend
 // won't send "ready".
 const THINKING_TIMEOUT_MS = 30_000
+
+// How long a completed task stays in the panel before it clears itself.
+const COMPLETED_TASK_MS = 3_000
 
 // After the backend's "ready", how long to keep thinking for an answer's first
 // audio, when none has arrived yet (e.g. "ready" sent before the speech is).
@@ -21,6 +24,13 @@ export function TutorProvider({ children }: { children: React.ReactNode }) {
   const [isBoardOpen, setIsBoardOpen] = useState<boolean>(false);
   const [boardContent, setBoardContent] = useState<BoardData>();
   const [captionText, setCaptionText] = useState<string>();
+  const [aiTasks, setAiTasks] = useState<AiTaskItem[]>([]);
+  const dismissAiTask = (key: string) => setAiTasks(current => current.filter(task => task.key !== key));
+
+  // Completed tasks clear themselves after a moment (failed or stopped ones
+  // wait for the user). Keyed by task, so a task that starts again cancels it.
+  const autoDismissTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => () => autoDismissTimers.current.forEach(clearTimeout), []);
   // The lesson step of the board on screen, if it came with one.
   const [boardStepId, setBoardStepId] = useState<StepId>();
 
@@ -160,6 +170,28 @@ export function TutorProvider({ children }: { children: React.ReactNode }) {
       showCaption: (text) => {
         setCaptionText(text)
       },
+      // Latest state per task. Once the user has stopped one, the backend's
+      // own late "completed"/"failed" for it is ignored; a new "started" is a
+      // new run. A dismissed task comes back only when it starts again.
+      onAiTask: (task) => {
+        const key = `${task.task}:${task.pageIndex ?? ''}`
+
+        clearTimeout(autoDismissTimers.current.get(key))
+        autoDismissTimers.current.delete(key)
+        if (task.status === 'completed') {
+          autoDismissTimers.current.set(key, setTimeout(() => {
+            autoDismissTimers.current.delete(key)
+            setAiTasks(current => current.filter(item => !(item.key === key && item.status === 'completed')))
+          }, COMPLETED_TASK_MS))
+        }
+
+        setAiTasks(current => {
+          const existing = current.find(item => item.key === key)
+          if (existing?.status === 'stopped' && task.status !== 'started') return current
+          const item = { ...task, key }
+          return existing ? current.map(other => (other.key === key ? item : other)) : [...current, item]
+        })
+      },
       setAiAgentStatus: (status) => {
         if (status === "thinking") {
           // A new request has started: stop whatever older answer is still
@@ -213,6 +245,9 @@ export function TutorProvider({ children }: { children: React.ReactNode }) {
         setIsBoardHidden,
         boardContent,
         captionText,
+        aiTasks,
+        stopAiTask,
+        dismissAiTask,
         messages,
         aiStatus,
         micStarting,

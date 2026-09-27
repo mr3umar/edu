@@ -24,6 +24,7 @@ import { generateLongDiv2 } from "./board-content-agents/long-div-openai-2.js"
 import { beautifyHtml } from "./board-content-agents/beautify-html-gemini.js"
 import { beautifyHtmlQwen } from "./board-content-agents/beautify-html-qwen.js"
 import { beautifyHtmlClaude } from "./board-content-agents/beautify-html-claude.js"
+import { validateBoardContent } from "./board-content-agents/validate-board-openai.js"
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +38,9 @@ export const createAiSession = async (wsClient: WebSocket) => {
         let loadedPages: {
                 [key: string]: {
                         analysis?: PageAnalysisM
+                        analysisDef?: Deferred<PageAnalysisM>
+                        analysisLock?: boolean;
+                        analysisNotFoundSince?: string
                 }
         } = {}
 
@@ -644,7 +648,7 @@ export const createAiSession = async (wsClient: WebSocket) => {
 
                         console.log(`INDEX::`, index)
 
-                        let htmlForBoard = board?.content
+                        let htmlForBoard = board?.richHtmlWithSVGAndMathML
 
                         const options: string[] = []
 
@@ -685,9 +689,10 @@ export const createAiSession = async (wsClient: WebSocket) => {
                         //   }));
                         // }
 
-                        lineToSay = lineToSay.replace(/<[^>]*>/g, '');
+                        // lineToSay = lineToSay.replace(/<[^>]*>/g, '');
 
                         lineToSay = he.decode(lineToSay);
+                        
                         let raw = lineToSay.replace(
                                 wordRegexWithPrefixAndXmlTag,
                                 (_, attrs, wordText) => {
@@ -759,7 +764,7 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                         }
                                 );
                         }
-                        console.log(`wordsIds: ${wordsIds}, row: ${raw}\n=======\n`)
+                        console.log(`wordsIds: ${wordsIds}, raw: ${raw}\n=======\n`)
 
                         if (!hasLettersOrNumbers(raw)) {
                                 return
@@ -803,6 +808,19 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                         
                                                         if(htmlForBoard) {
                                                                 
+
+                                                                prms.push(
+                                                                        validateBoardContent({recordUsage}, htmlForBoard)
+                                                                        .then(res => {
+                                                                                console.log(`[validateBoardContent]: stepId: ${stepId},  ${res.isValid}, correctedContent: ${res.correctedContent}`)
+                                                                                boardData = {
+                                                                                        type: 'general',
+                                                                                        content: {
+                                                                                                html: res.isValid ? htmlForBoard : res.correctedContent
+                                                                                        }
+                                                                                }
+                                                                        })
+                                                                )
                                                                 // console.log(`$$$$ ${board?.type}`)
                                                                 // if(board?.type == "longDivision") {
                                                                 //         prms.push(
@@ -884,6 +902,9 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                         localeCode = toLocale(currentUserLanguage) as LocaleCode
                                                 }
 
+
+                                                raw = raw.replace(/<[^>]*>/g, '');
+
                                                 let cc = raw
                                                 cc = removeTashkeel(cc)
 
@@ -924,6 +945,7 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                 }
 
 
+                                                
                                                 return await initGrokTTS(
                                                         wsClient,
                                                         raw!,
@@ -1114,16 +1136,28 @@ export const createAiSession = async (wsClient: WebSocket) => {
         
         
                                         try {
-                                                const analysis = (await SERVICES?.getPageAnalysis({
-                                                        uid: page.uid
-                                                }, SCOPE))?.data.item
-        
-                                                if (analysis) {
+                                                if(!loadedPages[currentPageIndex].analysisDef) {
+
+                                                        loadedPages[currentPageIndex].analysisDef = new Deferred()
+
+                                                        const analysis = (await SERVICES?.getPageAnalysis({
+                                                                uid: page.uid
+                                                        }, SCOPE))?.data.item
+                
+                                                        if (!analysis) {
+                                                                throw new Error("page analysis not found")
+                                                        }
                                                         delete (analysis as any).words
+                                                        for(const part of analysis.parts) {
+                                                                if(part.transformedText)
+                                                                        part.content = part.transformedText.full
+                                                
+                                                                delete part.transformedText
+                                                        }
+                                                        loadedPages[currentPageIndex].analysis = analysis
         
-                                                        loadedPages[analysis.uid].analysis = analysis
-        
-        
+                                                        loadedPages[currentPageIndex].analysisDef?.resolve(analysis)
+
                                                         const pageContent = {
                                                                 language: book.language,
                                                                 page: analysis,
@@ -1132,10 +1166,55 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                                 //     ...section, tutorials: [{id: '001', steps: tutorial1.steps}]
                                                                 // } 
                                                         }
+                                                        console.log(`Sending page-analysis to ai agent..`)
                                                         textStream.write(`page-analysis-${currentPageIndex}`, JSON.stringify(pageContent), true, 'system')
                                                 }
+
+                                                // commeted, it should response without waiting..
+                                                // await loadedPages[currentPageIndex].analysisDef?.promise
                                         }
-                                        catch (err) { }
+                                        catch (err: any) {
+                                                console.error(`Cannot get page analysis ${page.uid}. Error: ${err.message}`)
+                                        }
+
+
+                                        if(!loadedPages[currentPageIndex].analysis && !loadedPages[currentPageIndex].analysisLock) {
+                                                loadedPages[currentPageIndex].analysisLock = true
+                                                const pageUid = `${bookUid}/${currentPageIndex}`
+                                                wsClient.send(
+                                                        JSON.stringify({
+                                                                event: "ai-task",
+                                                                task: 'page-analysis',
+                                                                pageIndex: currentPageIndex,
+                                                                status: 'started'
+                                                        })
+                                                )
+                                                console.log(`page-analysis ${pageUid}..`)
+                                                void SERVICES?.analyzePage({uid: pageUid}, SCOPE)
+                                                .then(res => {
+                                                        loadedPages[currentPageIndex].analysisDef = undefined
+                                                        wsClient.send(
+                                                                JSON.stringify({
+                                                                        event: "ai-task",
+                                                                        task: 'page-analysis',
+                                                                        pageIndex: currentPageIndex,
+                                                                        status: 'completed'
+                                                                })
+                                                        )
+                                                })
+                                                .catch(err => {
+
+                                                        wsClient.send(
+                                                                JSON.stringify({
+                                                                        event: "ai-task",
+                                                                        task: 'page-analysis',
+                                                                        pageIndex: currentPageIndex,
+                                                                        status: 'failed'
+                                                                })
+                                                        )
+                                                        console.error(`Cannot analyze page ${pageUid}. Error: ${err.message}`)
+                                                })
+                                        }
         
                                 }
                         }

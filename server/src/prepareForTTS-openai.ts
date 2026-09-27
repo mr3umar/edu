@@ -23,7 +23,7 @@ export async function prepareForTTS(text: string) {
           content: text
         }
       ],
-      max_completion_tokens: 300,
+      // max_completion_tokens: 300,
     });
 
     const usage = response.usage;
@@ -39,7 +39,7 @@ export async function prepareForTTS(text: string) {
     const cost = calculateCost(model, tokensCount)
     console.log(`Input tokens: ${tokensCount.input} costs: ${cost.input}, Cached Input tokens: ${tokensCount.cachedInput} costs: ${cost.cachedInput}, output: ${tokensCount.output} includes reasoning tokens (${reasoningTokens}) costs: ${cost.output} model: ${model}. Details: ${JSON.stringify(usage)}`)
 
-    console.log(JSON.stringify(response), ">>>>")
+    console.log('[prepareForTTS]', JSON.stringify(response))
     const result = response.choices[0].message.content;
 
     return result

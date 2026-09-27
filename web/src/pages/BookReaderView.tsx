@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
 
 import { BookProvider } from '../api/book/provider';
 import { useBook } from '../api/book/hook';
@@ -10,6 +10,8 @@ import SectionSelector from '../components/SectionSelector';
 import TutorialPlayer from '../components/TutorialPlayer';
 import { BOOK_STATUS_LABELS, bookProcessingInfo } from '../lib/bookStatus';
 import { bookDirection } from '../lib/bookDirection';
+import { messageForCode } from '../api/rest/apiError';
+import { Button } from '../components/ui/button';
 import { useDocumentLang } from '../lib/useDocumentLang';
 
 export default function BookReaderView() {
@@ -40,7 +42,7 @@ export default function BookReaderView() {
       <TopBar onBack={() => navigate('/')} />
 
       <div className="relative min-h-0 flex-1">
-        <Reader/>
+        <ReaderOrError onBack={() => navigate('/')} />
       </div>
 
       {tutorialsOpen && (
@@ -50,6 +52,27 @@ export default function BookReaderView() {
         )}
     </div>
     </BookProvider>
+  );
+}
+
+// The book's pages, or why the book couldn't be opened.
+function ReaderOrError({ onBack }: { onBack: () => void }) {
+  const { loadError } = useBook();
+  const lang = useDocumentLang();
+  if (!loadError) return <Reader />;
+
+  const message = loadError.code === 'NotFound'
+    ? (lang === 'en' ? "This book wasn't found. It may have been removed." : 'لم يتم العثور على هذا الكتاب، ربما تم حذفه.')
+    : messageForCode(loadError.code, lang, loadError.description);
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+      <AlertCircle className="h-10 w-10 text-text-faint" strokeWidth={1.75} aria-hidden="true" />
+      <p className="max-w-sm text-[15px] text-text-muted" role="alert">{message}</p>
+      <Button onClick={onBack}>
+        {lang === 'en' ? 'Back to library' : 'العودة إلى المكتبة'}
+      </Button>
+    </div>
   );
 }
 
@@ -71,7 +94,7 @@ function PageUrlSync({ bookId, page }: { bookId?: string; page?: string }) {
 // The page's chrome is in the user's session language; the book's own
 // language only sets the page slider's direction.
 function TopBar({ onBack }: { onBack: () => void }) {
-  const { book } = useBook();
+  const { book, loadError } = useBook();
   const isEnglish = useDocumentLang() === 'en';
 
   const total = book?.pages.length ?? 0;
@@ -88,7 +111,7 @@ function TopBar({ onBack }: { onBack: () => void }) {
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-semibold text-text">
-          {book?.title ?? (isEnglish ? 'Loading…' : 'جارٍ التحميل…')}
+          {book?.title ?? (loadError ? '' : isEnglish ? 'Loading…' : 'جارٍ التحميل…')}
         </p>
       </div>
 

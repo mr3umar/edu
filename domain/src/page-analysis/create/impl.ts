@@ -1,0 +1,43 @@
+import { Service, createBaseService } from '@dija/gormic-service-kit-domain';
+import { CreateItem, GetLinkedItems, GetLinks, Link } from '@dija/taj-data-services';
+import { DATA_SCHEMA, UID_SCHEMA } from '../../config.js';
+import { BookChildsKeys, BookE } from '../../entities/Book.js';
+import { Def, serviceName } from './def.js';
+import { PageE, PageId } from '../../entities/Page.js';
+import { PageTextE } from '../../entities/PageText.js';
+import { BookTextChildsKeys } from '../../entities/BookText.js';
+import { PageAnalysisE } from '../../entities/PageAnalysis.js';
+
+export const createService = (
+    context: {},
+    depends: {
+        tajData: {
+            getLinks: Service<GetLinks>;
+            getLinkedItems: Service<GetLinkedItems>;
+            createItem: Service<CreateItem>;
+            link: Service<Link>;
+        };
+    },
+) =>
+    createBaseService<Def>(serviceName, ["bookUid"], async (params, scope, errorout, warn) => {
+        const data: PageAnalysisE['data'] = {
+            parts: params.parts,
+            words: params.words,
+        };
+
+        await depends.tajData.createItem(
+            {
+                pk: {
+                    cid: DATA_SCHEMA.collections.pageAnalysis,
+                    pid: params.bookUid,
+                    id: String(params.pageIndex),
+                },
+                data,
+            },
+            scope,
+        );
+        
+        return {
+            uid: `${params.bookUid}/${params.pageIndex}`,
+        };
+    });

@@ -17,7 +17,7 @@ import { bookDirection } from '../lib/bookDirection';
     export default function Reader({
       }: Props) {
 
-            const { currentPageIndex, book, setCurrentPageIndex } = useBook()
+            const { currentPageIndex, book, setCurrentPageIndex, analyzingPages, analysisRevisions } = useBook()
             const { isBoardOpen } = useTutor()
         
 
@@ -283,7 +283,7 @@ import { bookDirection } from '../lib/bookDirection';
           >
             {book.pages.map((page, index) => (
 
-        <PageProvider key={page.pageNumber} pageNumber={page.pageNumber} isActive={index === activePage}>
+        <PageProvider key={page.pageNumber} pageNumber={page.pageNumber} pageUid={page.uid} analysisRevision={analysisRevisions[index] ?? 0} isActive={index === activePage}>
           <ReaderPage
             key={page.pageNumber}
             ref={(el) => {
@@ -293,6 +293,7 @@ import { bookDirection } from '../lib/bookDirection';
             isDragging={isDragging}
             isActive={index === activePage}
             isBoardOpen={isBoardOpen}
+            isAnalyzing={analyzingPages.includes(index)}
           />
           </PageProvider>
         ))}

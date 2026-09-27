@@ -1,5 +1,8 @@
-import { Service, createBaseService } from '@dija/gormic-service-kit-domain';
+import { createBaseService, Service } from '@dija/gormic-service-kit-domain';
 import { GetItem } from '@dija/taj-data-services';
+import { DATA_SCHEMA } from '../../config.js';
+import { PageId } from '../../entities/Page.js';
+import { mapPageAnalysis, PageAnalysisE } from '../../entities/PageAnalysis.js';
 import { Def, serviceName } from './def.js';
 
 export const createService = (
@@ -11,20 +14,24 @@ export const createService = (
     },
 ) =>
     createBaseService<Def>(serviceName, ['uid'], async (params, scope, errorout, warn) => {
-        // const getRes = await depends.tajData.getItem(
-        //     {
-        //         pk: UID_SCHEMA.books.parse(params.uid),
-        //     },
-        //     scope,
-        // );
 
-        // const item = getRes.data!.item as unknown as BookE;
-                
-        return {
-            item: {
-                uid: "",
-                parts: [],
-                words: []
+        const {bookUid, pageIndex} = PageId.parse(params.uid)
+        
+
+        const getRes = await depends.tajData.getItem(
+            {
+                pk: {
+                    cid: DATA_SCHEMA.collections.pageAnalysis,
+                    pid: bookUid,
+                    id: String(pageIndex)
+                },
             },
+            scope,
+        );
+
+        const item = getRes.data!.item as unknown as PageAnalysisE;
+
+        return {
+            item: mapPageAnalysis(item)
         };
     });

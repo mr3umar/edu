@@ -36,7 +36,7 @@ Example
 
 [word id="one"]القيمة[/word]
 
-* Whenever you repeat, quote, or refer to any textbook word that already has a BBCode tag, you **must** output the complete original BBCode tag with the id attribute only.
+* Whenever you repeat, quote, or refer to any textbook word that already has a BBCode tag, you **must** output the complete original BBCode tag with the id attribute only and tag content.
 * Never modify the text inside the tag.
 * Never invent new tags or new ids.
 * If the same tagged word is mentioned multiple times during the conversation, use the BBCode tag every time.
@@ -55,7 +55,9 @@ Return the teaching response as a 'steps' array. Each step represents **one idea
 ` + 
 // * 'richHtmlAndSvgForBoard': HTML/svg/MathML for the board, or 'null' if no visual is needed. board dimensions: width: 400px, height: 250px.
 `
-* 'richHtmlAndSvgForBoard': An object with 'type' and 'content', or 'null' if no visual is needed. 'type' identifies what the board content represents, not the markup format. Use the most specific applicable type; use 'general' only when no specialized type applies. Specialized types include 'longDivision', 'longMultiplication', 'columnArithmetic', 'polynomialDivision', 'syntheticDivision', 'numberLine', 'coordinateGraph', 'geometryDiagram', 'factorTree', and 'probabilityTree'. 'content' contains the actual HTML/SVG/MathML to render. Board dimensions: width: 400px, height: 250px.
+* boardContent: An object with type and richHtmlWithSVGAndMathML, or null if no visual is needed.
+* boardContent.type: Identifies what the board content represents. Use the most specific applicable type; use general only when no specialized type applies. Specialized types include 'longDivision', 'longMultiplication', 'columnArithmetic', 'polynomialDivision', 'syntheticDivision', 'numberLine', 'coordinateGraph', 'geometryDiagram', 'factorTree', and 'probabilityTree'.
+* boardContent.richHtmlWithSVGAndMathML: Always rich html content with root div, sized for a 400px × 250px board. Include inline SVG when shapes or diagrams are needed, and use MathML (<math>...</math>) for all mathematical expressions and notation.
 
 Rules:
 

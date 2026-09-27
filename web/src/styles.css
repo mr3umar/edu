@@ -166,9 +166,79 @@
   left: 0;
 }
 
-.page-laser-overlay,
+/* .page-laser-overlay was here too, for the old glow (see ReaderPage). */
 .page-parts {
   opacity: 0.3;
+}
+
+/* The laser (LaserOverlay): multiplied into the page, so its colour tints
+   the paper while what's under it (text, drawings) stays as dark as it was. */
+.page-laser-overlay {
+  mix-blend-mode: multiply;
+  --laser: oklch(0.66 0.19 250);
+}
+
+/* Each point locks on: it settles from a little bigger, fading in. */
+.laser-point {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: laser-in 380ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+/* A faint tint over the point (no border of its own), and a ring that keeps
+   spreading out from its edge and fading, like a ping on a map. */
+.laser-fill {
+  fill: var(--laser);
+  fill-opacity: 0.08;
+}
+
+.laser-ripple {
+  fill: none;
+  /* A lighter shade of the laser colour. */
+  stroke: color-mix(in oklch, var(--laser) 55%, white);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: laser-ripple 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.laser-set.is-leaving {
+  animation: laser-fade-out 220ms ease forwards;
+}
+
+@keyframes laser-in {
+  from {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes laser-ripple {
+  from {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
+@keyframes laser-fade-out {
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .laser-point {
+    animation: laser-fade-in 200ms ease both;
+  }
+
+  .laser-ripple {
+    display: none;
+  }
+}
+
+@keyframes laser-fade-in {
+  from { opacity: 0; }
 }
 
 .page-writings {
@@ -181,5 +251,86 @@
 
 .page-parts g {
   cursor: pointer;
+}
+
+/* Page analysis in progress: a soft glow sweeps down the page and repeats,
+   trailing a faint gradient. Both are barely tinted with the accent (white
+   wouldn't show on white paper), so the page stays readable underneath.
+   Sized like the overlays above. */
+.page-scan {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: var(--radius-md);
+  animation: page-scan-in 300ms ease both;
+}
+
+.page-scan-beam {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28%;
+  /* The tail: fades in towards the line at its bottom edge */
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklch, var(--color-accent-600) 14%, transparent)
+  );
+  animation: page-scan-sweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* The scan's leading edge: a soft glow only, no hard line, so nothing crisp
+   ever sits over the text (the shadow draws with a transparent background). */
+.page-scan-beam::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: transparent;
+  box-shadow: 0 0 10px 2px color-mix(in oklch, var(--color-accent-600) 30%, transparent);
+}
+
+/* From just above the page (tail and line hidden) to just below it:
+   the beam is 28% of the page tall, so 100% / 28% ≈ 357% of its height. */
+@keyframes page-scan-sweep {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(360%);
+  }
+}
+
+@keyframes page-scan-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Reduced motion: no sweeping; the page gently pulses a faint tint instead. */
+@keyframes page-scan-pulse {
+  from {
+    background: color-mix(in oklch, var(--color-accent-600) 4%, transparent);
+  }
+  to {
+    background: color-mix(in oklch, var(--color-accent-600) 12%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-scan {
+    animation: page-scan-pulse 1.6s ease-in-out infinite alternate;
+  }
+
+  .page-scan-beam {
+    display: none;
+  }
 }
 

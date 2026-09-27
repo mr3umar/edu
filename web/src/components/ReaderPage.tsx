@@ -9,12 +9,16 @@ import { useBookPage } from '../api/book-page/hook';
 import { clarifyPart, sendText } from '../api/books';
 import { useBook } from '../api/book/hook';
 import type { PageM } from '../domain';
+import { useDocumentLang } from '../lib/useDocumentLang';
+import LaserOverlay from './LaserOverlay';
 
 type Props = {
   page: PageM;
   isDragging: boolean;
   isActive: boolean;
   isBoardOpen: boolean
+  // The backend is analysing this page (shows a scan over it).
+  isAnalyzing: boolean;
 };
 
 const ReaderPage = forwardRef<
@@ -27,6 +31,7 @@ const ReaderPage = forwardRef<
       isDragging,
       isActive,
       isBoardOpen,
+      isAnalyzing,
     },
     ref
   ) => {
@@ -39,6 +44,7 @@ const ReaderPage = forwardRef<
     const [data, setData] = useState(null);
 
     const { book } = useBook()
+    const isEnglish = useDocumentLang() === 'en'
     const { laserZones, teacherWritings, pageAnalysis } = useBookPage()
 
     // This hook is REACTIVE. It watches the `isActive` variable.
@@ -144,6 +150,14 @@ const ReaderPage = forwardRef<
           ))}
         </svg>
 
+        <LaserOverlay
+          width={page.width}
+          height={page.height}
+          zones={laserZones}
+          rtl={book?.language == "ar"}
+        />
+
+        {/* The laser before LaserOverlay: a cyan glowing ellipse over each word.
         <svg xmlns="http://www.w3.org/2000/svg"
           viewBox={"0 0 " + page.width + " " + page.height}
           className='page-laser-overlay'>
@@ -161,7 +175,7 @@ const ReaderPage = forwardRef<
               </feMerge>
             </filter>
           </defs>
-          {/* <circle cx="25" cy="25" r="20" fill="black"></circle> */}
+          {/ * <circle cx="25" cy="25" r="20" fill="black"></circle> * /}
 
           {laserZones.map((lz, i) => (
             <ellipse key={`${i}`}
@@ -175,7 +189,7 @@ const ReaderPage = forwardRef<
 
 
           ))}
-        </svg>
+        </svg> */}
 
         <svg xmlns="http://www.w3.org/2000/svg"
           viewBox={"0 0 " + page.width + " " + page.height}
@@ -250,6 +264,19 @@ const ReaderPage = forwardRef<
           
           </svg>
 
+          {/* Page analysis running: a light scan sweeping down the page, over the
+              image and its overlays. Same box as the overlays (full width, the
+              page's own proportions), so it covers exactly the page image. */}
+          {isAnalyzing && (
+            <div
+              className='page-scan'
+              style={{ aspectRatio: `${page.width} / ${page.height}` }}
+              role='status'
+            >
+              <span className='sr-only'>{isEnglish ? 'Analyzing page…' : 'جارٍ تحليل الصفحة…'}</span>
+              <div className='page-scan-beam' />
+            </div>
+          )}
 
         
           {/* {isBoardOpen && (

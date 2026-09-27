@@ -1,4 +1,5 @@
 import React, { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import './Panel.css';
 import { useTutor } from '../api/tutor/hook';
 import { useDocumentLang } from '../lib/useDocumentLang';
@@ -7,12 +8,25 @@ import { useAutoHeightTransition } from '../lib/useAutoHeightTransition';
 import { usePanelLayout } from '../lib/usePanelLayout';
 import BoardView from './board/BoardView';
 import CaptionText from './CaptionText';
+import AiTasks from './AiTasks';
 import { useApp } from '../App';
 import type { Message, MessageOptionsData } from '../types/book';
-import { sendText } from '../api/books';
+import { onLaserShown, sendText } from '../api/books';
 import { fitFrameToBox, fitToBox } from '../lib/fitToBox';
 import { Mic, Pause, Play, RotateCcw, RotateCw } from 'lucide-react';
 import { SpeedometerIcon } from './icons/SpeedIcons';
+
+// Sliding between the top and bottom of the screen.
+const PANEL_SLIDE_MS = 350;
+// The panel moves out of the way when at least this share of the laser's
+// points are behind it.
+const LASER_COVERED_RATIO = 0.8;
+// How long to wait for the laser's zones to show (they need the page analysis).
+const LASER_CHECK_MS = 150;
+const LASER_CHECKS = 10;
+// A resize finishing this soon after the user opened or minimized the panel is
+// theirs (it fades out, resizes and fades in, well within this).
+const USER_RESIZE_MS = 1500;
 
 // A wave filling the bottom of the AI icon, two wave-lengths wide (80 units,
 // one wave per 40) so sliding it left by one loops seamlessly.
@@ -83,7 +97,7 @@ const Panel = forwardRef<
   ) => {
 
 
-    const { isBoardOpen, setIsBoardHidden, boardContent, captionText, messages, aiStatus, micStarting, startMic, stopMic, cancelRequest, pauseRequest, resumeRequest } = useTutor()
+    const { isBoardOpen, setIsBoardHidden, boardContent, captionText, aiTasks, stopAiTask, dismissAiTask, messages, aiStatus, micStarting, startMic, stopMic, cancelRequest, pauseRequest, resumeRequest } = useTutor()
     const { mic, playback, micStatus } = useApp()
 
     // Follows the page: the book's language in the reader, the UI language elsewhere.
@@ -128,13 +142,17 @@ const Panel = forwardRef<
     const showCaption = ccEnabled && !!captionText;
 
     const showOptionsMessage = messages.length > 0 && lastMsg?.type == "options";
-    const showMain = showOptionsMessage || showCaption;
+    const showTasks = aiTasks.length > 0;
+    const showMain = showOptionsMessage || showCaption || showTasks;
 
     const visibleCount =
       Number(isBoardOpen) + Number(showMain);
 
 
     const [isMinimized, setIsMinimized] = useState(visibleCount == 0);
+    // When the user last opened or minimized the panel themselves (see the
+    // laser check after a resize, below).
+    const userResizedAt = useRef(-Infinity);
 
     // A minimized board isn't active: its step stops going out with messages.
     useEffect(() => {
@@ -159,7 +177,10 @@ const Panel = forwardRef<
       const next = !ccEnabled
       setCcEnabled(next)
       saveCcPreference(next)
-      if (next) setIsMinimized(false)
+      if (next) {
+        userResizedAt.current = performance.now()
+        setIsMinimized(false)
+      }
     }
 
     // Restore the panel whenever a new options message arrives for the main area
@@ -197,7 +218,7 @@ const Panel = forwardRef<
     // including the options' key: if that changed (the messages were cleared),
     // the options bubble would be re-created and replay its entrance, blinking
     // back in while the main area fades away.
-    const currentMain = { showCaption, captionText, showOptionsMessage, lastMsg, optionsKey: messages.length }
+    const currentMain = { showCaption, captionText, showOptionsMessage, lastMsg, optionsKey: messages.length, aiTasks }
     const lastMain = useRef(currentMain)
     if (showMain) lastMain.current = currentMain
     const main = showMain ? currentMain : lastMain.current
@@ -207,7 +228,7 @@ const Panel = forwardRef<
     useAutoHeightTransition(
       contentAreaRef,
       !animating && shown.open && shown.main && !shown.board,
-      [captionText, showOptionsMessage, messages.length],
+      [captionText, showOptionsMessage, messages.length, aiTasks],
     );
     const contentRef = useRef<HTMLDivElement>(null);
 
@@ -277,7 +298,88 @@ const Panel = forwardRef<
     }, [boardContent]);
 
 
-    const [toolLocation, setToolLocation] = useState("down");
+    const [toolLocation, setToolLocation] = useState<'up' | 'down'>('down');
+    const toolLocationRef = useRef(toolLocation);
+    const slide = useRef<Animation | undefined>(undefined);
+
+    // Moves the panel to the top or bottom of the screen, sliding from where it
+    // is now (even mid-slide) to its new place.
+    const moveTo = (location: 'up' | 'down') => {
+      const panel = panelRef.current;
+      if (!panel || location === toolLocationRef.current) return;
+      const before = panel.getBoundingClientRect().top;
+      slide.current?.cancel();
+      flushSync(() => {
+        toolLocationRef.current = location;
+        setToolLocation(location);
+      });
+      const dy = before - panel.getBoundingClientRect().top;
+      if (Math.abs(dy) < 1 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      slide.current = panel.animate(
+        [{ transform: `translate(-50%, ${dy}px)` }, { transform: 'translate(-50%, 0)' }],
+        { duration: PANEL_SLIDE_MS, easing: 'cubic-bezier(0.2, 0, 0, 1)', composite: 'replace' },
+      );
+    };
+
+    // When the laser points at the page, keep the panel off what it points at:
+    // if most of the points are behind it, move it to the other end of the
+    // screen, as long as it covers fewer of them there. The user can still move
+    // it back; it's only looked at again when the laser points somewhere new,
+    // or when the panel changes size by itself (see below).
+    const checkLaser = useRef<(retries: number) => void>(() => {});
+    useEffect(() => {
+      let frame = 0;
+      let retry: ReturnType<typeof setTimeout> | undefined;
+      const check = (attempt: number, retries: number) => {
+        const panel = panelRef.current;
+        if (!panel) return;
+        const points = [...document.querySelectorAll('.page-laser-overlay [data-laser-point]')]
+          .map(el => el.getBoundingClientRect())
+          .filter(r => r.width > 0 && r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth)
+          .map(r => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 }));
+        // The zones show once the page's analysis has them; wait a little.
+        if (points.length === 0) {
+          if (attempt < retries) retry = setTimeout(() => check(attempt + 1, retries), LASER_CHECK_MS);
+          return;
+        }
+        const rect = panel.getBoundingClientRect();
+        const covered = (top: number) => points.filter(p =>
+          p.x >= rect.left && p.x <= rect.right && p.y >= top && p.y <= top + rect.height).length;
+        // Where it's meant to be, not where it is mid-slide.
+        const edge = 8;
+        const current = toolLocationRef.current;
+        const here = covered(current === 'up' ? edge : window.innerHeight - edge - rect.height);
+        if (here / points.length < LASER_COVERED_RATIO) return;
+        const other = current === 'up' ? 'down' : 'up';
+        const there = covered(other === 'up' ? edge : window.innerHeight - edge - rect.height);
+        if (there < here) moveTo(other);
+      };
+      checkLaser.current = retries => {
+        cancelAnimationFrame(frame);
+        clearTimeout(retry);
+        // After the zones have rendered.
+        frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => check(0, retries)); });
+      };
+      const unsubscribe = onLaserShown(() => checkLaser.current(LASER_CHECKS));
+      return () => {
+        unsubscribe();
+        cancelAnimationFrame(frame);
+        clearTimeout(retry);
+      };
+    }, []);
+
+    // The panel grew or shrank by itself (e.g. opened for a board or a
+    // caption) and may now be over the laser: check again once it has its new
+    // size. Not when the user opened or minimized it; it stays where they had it.
+    const wasAnimating = useRef(false);
+    useEffect(() => {
+      const finished = wasAnimating.current && !animating;
+      wasAnimating.current = animating;
+      if (!finished) return;
+      if (performance.now() - userResizedAt.current < USER_RESIZE_MS) return;
+      // The laser is already showing, if it is: no need to wait for it.
+      checkLaser.current(0);
+    }, [animating]);
 
 
     return (
@@ -301,6 +403,14 @@ const Panel = forwardRef<
                 ))}
               </div>
             )}
+
+            {/* What the AI is working on in the background, under the options. */}
+            <AiTasks
+              tasks={main.aiTasks}
+              lang={isEnglish ? 'en' : 'ar'}
+              onStop={stopAiTask}
+              onDismiss={dismissAiTask}
+            />
           </div>
 
           <div ref={boardColumnRef} className='panel-board-column'>
@@ -452,7 +562,7 @@ const Panel = forwardRef<
   title={toolLocation === "down" ? "Move up" : "Move down"}
   aria-pressed="false"
   onClick={() =>
-    setToolLocation(toolLocation === "down" ? "up" : "down")
+    moveTo(toolLocation === "down" ? "up" : "down")
   }
 >
 <svg viewBox="0 0 26 26" width={26} height={26}>
@@ -489,7 +599,10 @@ const Panel = forwardRef<
                 aria-label={isMinimized ? "Restore" : "Minimize"}
                 aria-pressed={!isMinimized}
 
-                onClick={() => setIsMinimized(!isMinimized)}
+                onClick={() => {
+                  userResizedAt.current = performance.now()
+                  setIsMinimized(!isMinimized)
+                }}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   {isMinimized ? (

@@ -730,6 +730,100 @@ type AIStatus =
   transform: scaleX(-1);
 }
 
+/* The AI's background tasks, under the options message: small, tail-less
+   bubbles tinted with the accent blue (the same as the page scan's glow), so
+   they read as status rather than as messages (and not as warnings). The icon shows how the task is going, in the text's
+   colour except for a failure; the button stops or dismisses it. */
+.panel-tasks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.panel-task {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding-block: 4px;
+  padding-inline: 10px 4px;
+
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--color-accent-600) 14%, white);
+  color: #1f2937;
+
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+
+  animation: panel-message-in 250ms ease both;
+}
+
+.panel-task-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-task-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.panel-task-icon.spin {
+  animation: panel-task-spin 1s linear infinite;
+}
+
+@keyframes panel-task-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.panel-task.is-failed .panel-task-icon { color: #dc2626; }
+
+/* Stop (while running) or dismiss (once over) */
+.panel-task-btn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--color-accent-600) 16%, transparent);
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.panel-task-btn svg {
+  width: 10px;
+  height: 10px;
+}
+
+.panel-task-btn:hover {
+  background: color-mix(in oklch, var(--color-accent-600) 28%, transparent);
+}
+
+.panel-task-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--color-accent-600) 60%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-task-icon.spin {
+    animation: none;
+  }
+}
+
 /* The word being spoken (estimated from the audio's progress) */
 .caption-word {
   transition: color 120ms ease;

@@ -662,9 +662,13 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
                 boardStreamIdx = -1;
                 playFrom({ streamIdx, chunkIdx: 0, offset: 0 });
                 // Paused, its audio events can't fire on the frozen clock, so show
-                // its board and options now to make the jump visible. Playing on,
-                // they come with its first chunk as usual.
-                if (!playOn) enterStream(streamIdx);
+                // its board, options and the laser's first words now to make the
+                // jump visible. Playing on, they come with its chunks as usual.
+                if (!playOn) {
+                        enterStream(streamIdx);
+                        const pointing = streams[streamIdx]?.chunks.find(chunk => chunk.wordsIds?.length);
+                        if (pointing) showLaser(undefined, { wordsIds: pointing.wordsIds! });
+                }
         };
 
         // ---- Controls ----

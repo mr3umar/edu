@@ -24,22 +24,42 @@ export function BookProvider({
 }) {
     const [currentPageIndex, setCurrentPageIndex] = useState<number>(undefined);
     const [book, setBook] = useState<BookM | null>(null);
+    const [loadError, setLoadError] = useState<{ code: string; description?: string }>();
+    const [analyzingPages, setAnalyzingPages] = useState<number[]>([]);
+    const [analysisRevisions, setAnalysisRevisions] = useState<Record<number, number>>({});
 
 
   useEffect(() => {
+    // A late answer for a book the user has since left is ignored.
+    let cancelled = false;
+    setLoadError(undefined);
+    setAnalyzingPages([]);
+
     async function load() {
-      const data = await getBook({
-        uid: bookId!
-      }, {});
+      // Failures come back as { error: { code, description } } (see CLAUDE.md),
+      // not as exceptions; GetBook's own code is NotFound. Anything thrown
+      // (e.g. unreadable response) is reported as UnknownError.
+      try {
+        const result = await getBook({ uid: bookId! }, {});
+        if (cancelled) return;
 
-      // Set the index in the same update as the book, so there's never a
-      // render (or a getCurrentPageIndex() read) with a book but no page.
-      const item = data.data.item;
-      setBook(item);
-      setCurrentPageIndex(initialPageIndex(item, pageIndex));
+        const item = result.data?.item;
+        if (result.error || !item) {
+          setLoadError({ code: result.error?.code ?? 'NotFound', description: result.error?.description });
+          return;
+        }
+
+        // Set the index in the same update as the book, so there's never a
+        // render (or a getCurrentPageIndex() read) with a book but no page.
+        setBook(item);
+        setCurrentPageIndex(initialPageIndex(item, pageIndex));
+      } catch (err) {
+        if (!cancelled) setLoadError({ code: 'UnknownError', description: (err as Error)?.message });
+      }
     }
-    load (); 
+    void load();
 
+    return () => { cancelled = true; };
   }, [bookId]);
 
 
@@ -88,6 +108,18 @@ export function BookProvider({
       },
       openTutorial,
       changeTutrialStep,
+      // Page analysis progress: the page shows a scan while it runs, and
+      // fetches its analysis again once it completes.
+      onAiTask: ({ task, pageIndex, status }) => {
+        if (task !== 'page-analysis' || typeof pageIndex !== 'number') return
+        setAnalyzingPages(current => {
+          const others = current.filter(index => index !== pageIndex)
+          return status === 'started' ? [...others, pageIndex] : others
+        })
+        if (status === 'completed') {
+          setAnalysisRevisions(current => ({ ...current, [pageIndex]: (current[pageIndex] ?? 0) + 1 }))
+        }
+      },
     })
   }, [book, openTutorial, changeTutrialStep]);
 
@@ -100,6 +132,9 @@ export function BookProvider({
         currentPageIndex,
         setCurrentPageIndex,
         book,
+        loadError,
+        analyzingPages,
+        analysisRevisions,
       }}
     >
       {children}

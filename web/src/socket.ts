@@ -1,4 +1,4 @@
-import { changeTutorialStep, getCurrentStepId, goToPage, openTutorial, setAiAgentStatus, showLaser, showOptions, writeOnBoard, writeOnTextbook } from "./api/books";
+import { changeTutorialStep, getCurrentStepId, goToPage, handleAiTask, openTutorial, setAiAgentStatus, showLaser, showOptions, writeOnBoard, writeOnTextbook } from "./api/books";
 import type { BoardData, QuestionOption, StepId } from "./types/book";
 import { getAuthToken } from "./api/rest/token";
 import { ensureFreshToken } from "./api/rest/http";
@@ -109,6 +109,8 @@ export const startSocket = () => {
                 stepId?: StepId,
                 // What the stream says, for closed captions.
                 caption?: string,
+                // Page words the stream points at (the laser), if sent per stream.
+                wordsIds?: string[],
                 options?: QuestionOption[],
         }} = {}
 
@@ -148,7 +150,10 @@ export const startSocket = () => {
                         if (packet.event === 'audio') {
                                 if(_onIncomingAudio) {
                                         const stream = audioStreams[streamKey(packet.streamId)]
-                                        _onIncomingAudio(packet.data, packet.wordsIds, packet.seq, streamKey(packet.streamId), stream?.board, stream?.options, packet?.completed, stream?.stepId, stream?.caption)
+                                        // Words to point at while this audio plays: its own, or the
+                                        // stream's (sent with 'new-audio-stream').
+                                        const wordsIds = packet.wordsIds ?? stream?.wordsIds
+                                        _onIncomingAudio(packet.data, wordsIds, packet.seq, streamKey(packet.streamId), stream?.board, stream?.options, packet?.completed, stream?.stepId, stream?.caption)
                                 }
                         } else if (packet.event === 'new-audio-stream') {
                                 audioStreams[streamKey(packet.streamId)] = {
@@ -156,6 +161,7 @@ export const startSocket = () => {
                                         options: packet.options,
                                         stepId: packet.stepId,
                                         caption: typeof packet.text === 'string' ? packet.text : undefined,
+                                        wordsIds: Array.isArray(packet.wordsIds) ? packet.wordsIds : undefined,
                                 }
                         } else if (packet.event === 'status') {
                                 status = packet.data
@@ -287,6 +293,9 @@ export const startSocket = () => {
                       else if (packet.event === 'ai-agent-status') {
 
                         setAiAgentStatus(packet.status)
+                      }
+                      else if (packet.event === 'ai-task') {
+                        handleAiTask({ task: packet.task, pageIndex: packet.pageIndex, status: packet.status })
                       }
 
                 }

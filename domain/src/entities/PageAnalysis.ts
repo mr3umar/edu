@@ -14,12 +14,18 @@ export type PageAnalysisE = {
                 y: number;
                 width: number;
                 height: number;
+            },
+            transformedText?: {
+                short: string;
+                full: string
             }
         }[];
         words: {
             id: string;
-            x: number;
-            y: number;
+            partId: string;
+            text: string;
+            x?: number;
+            y?: number;
             width: number;
             height: number;
         }[]
