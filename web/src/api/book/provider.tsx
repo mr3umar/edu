@@ -27,6 +27,7 @@ export function BookProvider({
     const [loadError, setLoadError] = useState<{ code: string; description?: string }>();
     const [analyzingPages, setAnalyzingPages] = useState<number[]>([]);
     const [analysisRevisions, setAnalysisRevisions] = useState<Record<number, number>>({});
+    const [zoomed, setZoomed] = useState(false);
 
 
   useEffect(() => {
@@ -135,6 +136,8 @@ export function BookProvider({
         loadError,
         analyzingPages,
         analysisRevisions,
+        zoomed,
+        setZoomed,
       }}
     >
       {children}

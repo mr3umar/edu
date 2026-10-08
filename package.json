@@ -4,8 +4,7 @@
   "private": true,
   "workspaces": [
     "domain",
-    "server",
-    "web"
+    "server"
   ],
   "devDependencies": {
     "@types/express": "^5.0.6",
@@ -15,8 +14,8 @@
   },
   "dependencies": {
     "edu-ai-domain": "^1.0.0",
-    "taj-data-services": "file:///Users/aburayan/Documents/repos/taj-data/packages/services",
+    "express": "^5.2.1",
     "taj-data-server": "file:///Users/aburayan/Documents/repos/taj-data/packages/server",
-    "express": "^5.2.1"
+    "taj-data-services": "file:///Users/aburayan/Documents/repos/taj-data/packages/services"
   }
 }

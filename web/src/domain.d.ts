@@ -3,9 +3,10 @@ import { ListQueryParams as ListQueryParams$1 } from '@dija/gormic-service-kit-d
 import * as _gormic_utils_public from '@gormic/utils-public';
 import * as _dija_taj_data_services from '@dija/taj-data-services';
 import { ItemPK, MetaData } from '@dija/taj-data-services';
+import OpenAI from 'openai';
 import * as _dija_gormic_cloud_public from '@dija/gormic-cloud-public';
 
-type Def$z = {
+type Def$1e = {
     Params: {
         uid: string;
     };
@@ -19,7 +20,7 @@ type Def$z = {
 /**
  * Restores an archived user.
  */
-type Def$y = {
+type Def$1d = {
     Params: {
         uid: string;
     };
@@ -33,7 +34,7 @@ type Def$y = {
 /**
  * Archives a specific user.
  */
-type Def$x = {
+type Def$1c = {
     Params: {
         uid: string;
     };
@@ -231,7 +232,7 @@ type ExcelBorderStyle = {
     };
 };
 
-type Def$w = {
+type Def$1b = {
     Params: {
         uid: string;
     };
@@ -332,11 +333,49 @@ declare const STATUS_PORTION: {
 };
 declare const mapBook: (item: BookE) => BookM;
 
+type PageAnalysisE = {
+    pk: ItemPK;
+    data: {
+        parts: {
+            id: string;
+            type: "question" | "question_group";
+            content: string;
+            parentId?: string;
+            coordinates: {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+            };
+            transformedText?: {
+                short: string;
+                full: string;
+            };
+        }[];
+        words: {
+            id: string;
+            partId: string;
+            text: string;
+            x?: number;
+            y?: number;
+            width: number;
+            height: number;
+        }[];
+    };
+    meta: MetaData;
+    links: {};
+};
+type PageAnalysisM = PageAnalysisE['data'] & PageAnalysisE['meta'] & {
+    uid: string;
+};
+declare const mapPageAnalysis: (entity: PageAnalysisE) => PageAnalysisM;
+
 declare namespace Context {
     type GetEnvTarget = (scope: Scope) => 'PROD' | 'TEST' | 'DEV';
     type GetUserId = (scope: Scope) => Promise<string | undefined>;
     type GetClientIamId = (scope: any) => Promise<string>;
     type GetClientUserId = (scope: any) => Promise<string>;
+    type getClientLanguage = (scope: any) => Promise<string>;
     type GetSource = (scope: any) => Promise<string | undefined>;
     type Encrypt = (scope: any, data: Record<string, any>, options: {
         expiresIn?: number;
@@ -352,7 +391,7 @@ declare namespace Context {
     type CreateExcelWorkbook = (scope: any) => ExcelBook;
     type GetIAMInstanceId = (scope: any) => Promise<string>;
     type CallService = (scope: any, instanceId: string, serviceName: string, params: ServiceDef["Params"]) => Promise<ServiceResult<ServiceDef>>;
-    type AppendFile = (scope: any, type: "pdf", fileId: string, fileName: string, fileSize: number, isCompleted: boolean, chunkIndex?: number, data?: Buffer) => Promise<void>;
+    type AppendFile = (scope: any, type: "pdf" | 'conv-uploaded-image', fileId: string, fileName: string, fileSize: number, isCompleted: boolean, chunkIndex?: number, data?: Buffer) => Promise<void>;
     type PdfToImages = (scope: any, fileId: string) => Promise<void>;
     type extractText = (scope: any, bookUid: string, pageIndex: number) => Promise<string>;
     type generateBookStructure = (scope: any, pageText: string[]) => Promise<{
@@ -367,12 +406,24 @@ declare namespace Context {
             sectionIndex: number;
         }[];
     }>;
+    type analyzePage = (scope: any, bookUid: string, pageIndex: number, pageWidth: number, pageHight: number) => Promise<{
+        parts: PageAnalysisE["data"]["parts"];
+        words: PageAnalysisE["data"]["words"];
+    }>;
+    type sendToClient = (scope: any, data: Record<string, any>) => Promise<void>;
+    type getOpenaiSession = (scope: any) => Promise<OpenAI>;
+    type getPageImageBase64 = (scope: any, bookUid: string, pageIndex: number) => Promise<string>;
+    type startTask = (scope: any, taskUid: string) => Promise<void>;
+    type cancelTask = (scope: any, taskUid: string) => Promise<void>;
+    type pauseTaskGroup = (scope: any, taskGroupUid: string) => Promise<void>;
+    type resumeTaskGroup = (scope: any, taskGroupUid: string) => Promise<void>;
+    type getTaskAbortContoller = (scope: any, taskUid: string) => Promise<AbortController>;
 }
 
 /**
  * Lists all journeys for a specific customer
  */
-type Def$v = {
+type Def$1a = {
     Params: {
         userUid: string;
         query?: ListQueryParams$1<never, never>;
@@ -385,7 +436,7 @@ type Def$v = {
     WarningCodes: never;
 };
 
-type ListBooks = Def$v;
+type ListBooks = Def$1a;
 declare const listBooks: (context: {
     getUserId: Context.GetUserId;
 }, depends: {
@@ -396,12 +447,12 @@ declare const listBooks: (context: {
 }) => (params: {
     userUid: string;
     query?: _dija_gormic_service_kit_domain.ListQueryParams<never, never>;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$v, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$1a, any>>;
 
 /**
  * Lists all journeys for a specific customer
  */
-type Def$u = {
+type Def$19 = {
     Params: {
         query?: ListQueryParams$1<never, never>;
     };
@@ -410,7 +461,7 @@ type Def$u = {
     WarningCodes: never;
 };
 
-type Def$t = {
+type Def$18 = {
     Params: {
         uid: string;
     };
@@ -449,41 +500,10 @@ type UserM = UserE['data'] & UserE['meta'] & {
 };
 declare const mapUser: (item: UserE) => UserM;
 
-type PageAnalysisE = {
-    pk: ItemPK;
-    data: {
-        parts: {
-            id: string;
-            type: "question" | "question_group";
-            content: string;
-            parentId?: string;
-            coordinates: {
-                x: number;
-                y: number;
-                width: number;
-                height: number;
-            };
-        }[];
-        words: {
-            id: string;
-            x: number;
-            y: number;
-            width: number;
-            height: number;
-        }[];
-    };
-    meta: MetaData;
-    links: {};
-};
-type PageAnalysisM = PageAnalysisE['data'] & PageAnalysisE['meta'] & {
-    uid: string;
-};
-declare const mapPageAnalysis: (entity: PageAnalysisE) => PageAnalysisM;
-
 /**
  * Returns a specific book
  */
-type Def$s = {
+type Def$17 = {
     Params: {
         uid: string;
     };
@@ -494,7 +514,7 @@ type Def$s = {
     WarningCodes: never;
 };
 
-type Def$r = {
+type Def$16 = {
     Params: {
         uid: string;
         title?: BookE["data"]["title"];
@@ -508,7 +528,7 @@ type Def$r = {
     WarningCodes: never;
 };
 
-type Def$q = {
+type Def$15 = {
     Params: {
         id?: string;
         title?: BookE["data"]["title"];
@@ -520,7 +540,17 @@ type Def$q = {
     ErrorCodes: never;
 };
 
-type Def$p = {
+type Def$14 = {
+    Params: {
+        uid: string;
+    };
+    Data: {
+        pageAnalysisUid: string;
+    };
+    ErrorCodes: never;
+};
+
+type Def$13 = {
     Params: {
         uid: string;
         width?: PageE["data"]["width"];
@@ -537,7 +567,7 @@ type Def$p = {
     WarningCodes: never;
 };
 
-type Def$o = {
+type Def$12 = {
     Params: {
         bookUid: string;
         pageIndex: number;
@@ -553,7 +583,24 @@ type Def$o = {
     ErrorCodes: never;
 };
 
-type Def$n = {
+type Def$11 = {
+    Params: {
+        conversationUid: string;
+        fileId: string;
+        fileName: string;
+        fileSize: number;
+        chunkIndex?: number;
+        chunk?: any;
+        completed?: boolean;
+    };
+    Data: {
+        uploadUid?: string;
+        progressPercent: number;
+    };
+    ErrorCodes: never;
+};
+
+type Def$10 = {
     Params: {
         uploadUid: string;
     };
@@ -561,7 +608,7 @@ type Def$n = {
     ErrorCodes: never;
 };
 
-type Def$m = {
+type Def$$ = {
     Params: {
         uploadUid: string;
         pageIndex: number;
@@ -573,7 +620,7 @@ type Def$m = {
     ErrorCodes: never;
 };
 
-type Def$l = {
+type Def$_ = {
     Params: {
         uploadUid: string;
         title?: string;
@@ -583,7 +630,7 @@ type Def$l = {
     ErrorCodes: never;
 };
 
-type Def$k = {
+type Def$Z = {
     Params: {
         bookUid: string;
         uploadUid: string;
@@ -592,7 +639,7 @@ type Def$k = {
     ErrorCodes: never;
 };
 
-type Def$j = {
+type Def$Y = {
     Params: {
         fileId: string;
         fileName: string;
@@ -628,7 +675,7 @@ type UploadM = UploadE['data'] & UploadE['meta'] & {
 /**
  * Returns a specific book
  */
-type Def$i = {
+type Def$X = {
     Params: {
         uid: string;
     };
@@ -639,7 +686,7 @@ type Def$i = {
     WarningCodes: never;
 };
 
-type Def$h = {
+type Def$W = {
     Params: {
         bookUid: string;
         index: number;
@@ -654,7 +701,18 @@ type Def$h = {
     ErrorCodes: never;
 };
 
-type Def$g = {
+type Def$V = {
+    Params: {
+        query?: ListQueryParams$1<never, never>;
+    };
+    Data: {
+        items: UserM[];
+        next?: string;
+    };
+    ErrorCodes: never;
+};
+
+type Def$U = {
     Params: {
         uid: string;
         name?: UserE["data"]["gender"];
@@ -669,7 +727,7 @@ type Def$g = {
     WarningCodes: never;
 };
 
-type UpdateUser = Def$g;
+type UpdateUser = Def$U;
 declare const updateUser: (context: {}, depends: {
     tajData: {
         updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
@@ -684,9 +742,9 @@ declare const updateUser: (context: {}, depends: {
     gender?: UserE["data"]["gender"];
     birthdate?: UserE["data"]["birthdate"];
     preferedLang?: UserE["data"]["preferedLang"];
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$g, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$U, any>>;
 
-type Def$f = {
+type Def$T = {
     Params: {
         name?: UserE["data"]["gender"];
         gender?: UserE["data"]["gender"];
@@ -698,7 +756,7 @@ type Def$f = {
     WarningCodes: never;
 };
 
-type Def$e = {
+type Def$S = {
     Params: {
         oldPassword: string;
         newPassword: string;
@@ -709,7 +767,7 @@ type Def$e = {
     ErrorCodes: never;
 };
 
-type Def$d = {
+type Def$R = {
     Params: {
         token: string;
         newPassword: string;
@@ -720,7 +778,7 @@ type Def$d = {
     ErrorCodes: never;
 };
 
-type Def$c = {
+type Def$Q = {
     Params: {
         email: string;
         token: string;
@@ -732,7 +790,7 @@ type Def$c = {
     ErrorCodes: never;
 };
 
-type Def$b = {
+type Def$P = {
     Params: {
         email: string;
     };
@@ -742,7 +800,7 @@ type Def$b = {
     ErrorCodes: never;
 };
 
-type Def$a = {
+type Def$O = {
     Params: {
         email: string;
     };
@@ -752,7 +810,7 @@ type Def$a = {
     ErrorCodes: never;
 };
 
-type Def$9 = {
+type Def$N = {
     Params: {
         refreshToken: string;
     };
@@ -766,7 +824,7 @@ type Def$9 = {
     ErrorCodes: never;
 };
 
-type Def$8 = {
+type Def$M = {
     Params: {
         uid: string;
     };
@@ -777,22 +835,22 @@ type Def$8 = {
     ErrorCodes: never;
 };
 
-type GetUser = Def$8;
+type GetUser = Def$M;
 declare const getUser: (context: {}, depends: {
     tajData: {
         getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
     };
 }) => (params: {
     uid: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$8, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$M, any>>;
 
-type Def$7 = {
+type Def$L = {
     Params: {};
     Data: GetUser["Data"];
     ErrorCodes: 'MISSING_TOKEN';
 };
 
-type Def$6 = {
+type Def$K = {
     Params: {
         email: string;
     };
@@ -802,7 +860,7 @@ type Def$6 = {
     ErrorCodes: 'NOT_FOUND';
 };
 
-type Def$5 = {
+type Def$J = {
     Params: {
         email: string;
         password: string;
@@ -820,7 +878,7 @@ type Def$5 = {
     ErrorCodes: 'NOT_FOUND' | 'INCORRECT_CREDENTIAL';
 };
 
-type Def$4 = {
+type Def$I = {
     Params: {
         email: string;
         password: string;
@@ -832,10 +890,23 @@ type Def$4 = {
     ErrorCodes: 'ALREADY_REGISTERED';
 };
 
+type Def$H = {
+    Params: {
+        bookUid: string;
+        pageIndex: number;
+        parts: PageAnalysisE["data"]["parts"];
+        words: PageAnalysisE["data"]["words"];
+    };
+    Data: {
+        uid: string;
+    };
+    ErrorCodes: never;
+};
+
 /**
  * Returns a specific book
  */
-type Def$3 = {
+type Def$G = {
     Params: {
         uid: string;
     };
@@ -876,7 +947,7 @@ type BookTextM = BookTextE['data'] & BookTextE['meta'] & {
 /**
  * Returns a specific book
  */
-type Def$2 = {
+type Def$F = {
     Params: {
         uid: string;
     };
@@ -887,7 +958,7 @@ type Def$2 = {
     WarningCodes: never;
 };
 
-type Def$1 = {
+type Def$E = {
     Params: {
         bookUid: string;
         pageIndex: number;
@@ -899,7 +970,7 @@ type Def$1 = {
     ErrorCodes: never;
 };
 
-type Def = {
+type Def$D = {
     Params: {
         bookUid: string;
         sectionIndex: number;
@@ -911,7 +982,585 @@ type Def = {
     ErrorCodes: never;
 };
 
-type CreateBook = Def$q;
+type BoardContentType = "general" | "simpleDivision" | "longDivision" | "longMultiplication" | "columnArithmetic" | "polynomialDivision" | "syntheticDivision" | "numberLine" | "coordinateGraph" | "geometryDiagram" | "factorTree" | "probabilityTree";
+
+type StepE<ChunkT = any> = {
+    pk: ItemPK;
+    data: {
+        type: 'step';
+        chunk: ChunkT;
+    };
+    meta: MetaData;
+    links: {};
+    childs: {};
+};
+type StepM = StepE['data'] & StepE['meta'] & {
+    uid: string;
+};
+
+type TaskE<InputT = Record<string, any>, OutputT = Record<string, any>> = {
+    pk: ItemPK;
+    data: {
+        type: 'text-steps' | 'step-processing' | 'tts-prepare' | 'validate-board' | 'pre-tts' | 'tts' | 'uploaded-image';
+        status?: 'pending' | 'completed' | 'canceled';
+        predecessorUids?: string[];
+        input?: InputT;
+        output?: OutputT;
+    };
+    meta: MetaData;
+    links: {};
+    childs: {
+        steps: StepE[];
+    };
+};
+type TaskM = TaskE['data'] & TaskE['meta'] & {
+    uid: string;
+    taskGroupUid: string;
+    steps?: StepM[];
+};
+type TextStepsOutput = {
+    steps: TextStepOutputChunk[];
+    options?: string[];
+};
+type TextStepOutputChunk = {
+    stepIndex: number;
+    stepId: string;
+    language: 'ar' | 'en';
+    textToSay: string;
+    boardContent?: {
+        type: BoardContentType;
+        richHtmlWithSVGAndMathML: string;
+    };
+};
+
+/**
+ * Lists all journeys for a specific customer
+ */
+type Def$C = {
+    Params: {
+        conversationUid: string;
+    };
+    Data: {
+        messages: {
+            uid: string;
+            type: "page-image" | "page-analysis" | "user-text" | "instructions" | "assistant" | 'user-audio' | 'user-uploaded-image';
+            userText?: string;
+            assistant?: TextStepsOutput;
+            uploadUid?: string;
+        }[];
+    };
+    ErrorCodes: never;
+    WarningCodes: never;
+};
+
+type ConversationE = {
+    pk: ItemPK;
+    data: {
+        language: 'ar' | 'en';
+    };
+    meta: MetaData;
+    links: {
+        user: ItemPK;
+    };
+    childs: {};
+};
+
+type Def$B = {
+    Params: {
+        uid: string;
+        language?: ConversationE["data"]["language"];
+    };
+    Data: {
+        success: boolean;
+    };
+    ErrorCodes: 'NoChanges';
+    WarningCodes: never;
+};
+
+type Def$A = {
+    Params: {
+        language: ConversationE["data"]["language"];
+    };
+    Data: {
+        uid: string;
+    };
+    ErrorCodes: never;
+};
+
+type MessageE = {
+    pk: ItemPK;
+    data: {
+        bookUid?: string;
+        pageIndex?: number;
+        stepUid?: string;
+        userReqType?: 'clarify-part' | 'clarify-concept' | 'clarify-question' | 'options' | 'audio';
+        userText?: string;
+        instructions?: string;
+        assistant?: string;
+    };
+    meta: MetaData;
+    links: {};
+    childs: {};
+};
+
+type Def$z = {
+    Params: {
+        conversationUid: string;
+        requestId: string;
+        language: ConversationE['data']["language"];
+        bookUid?: MessageE['data']["bookUid"];
+        pageIndex?: MessageE['data']["pageIndex"];
+        stepId?: MessageE['data']["stepUid"];
+        event?: 'audio' | 'json' | 'cancel' | 'pause' | 'resume';
+        recordingId?: boolean;
+        preroll?: boolean;
+        data?: string;
+        ended?: boolean;
+        avgIsSpeech: number;
+        loudnessDbfs: number;
+    };
+    Data: {
+        success: boolean;
+    };
+    ErrorCodes: never;
+};
+
+/**
+ * Lists all journeys for a specific customer
+ */
+type Def$y = {
+    Params: {
+        conversationUid: string;
+    };
+    Data: {
+        messages: {
+            uid: string;
+            type: "page-image" | "page-analysis" | "user-text" | "instructions" | "assistant" | 'user-audio';
+            content: string;
+        }[];
+    };
+    ErrorCodes: never;
+    WarningCodes: never;
+};
+
+type TaskGroupE = {
+    pk: ItemPK;
+    data: {
+        clientRequestId: string;
+        status: 'running' | 'completed' | 'canceled' | 'paused';
+        completedAt?: string;
+    };
+    meta: MetaData;
+    links: {
+        conversation?: ItemPK;
+    };
+    childs: {
+        tasks: TaskE[];
+    };
+};
+type TaskGroupM = TaskGroupE['data'] & TaskGroupE['meta'] & {
+    uid: string;
+    conversationUid?: string;
+    tasks: TaskM[];
+};
+
+/**
+ * Lists all journeys for a specific customer
+ */
+type Def$x = {
+    Params: {
+        conversationUid: string;
+        query?: ListQueryParams$1<never, never>;
+    };
+    Data: {
+        items: TaskGroupM[];
+        next?: string;
+    };
+    ErrorCodes: never;
+    WarningCodes: never;
+};
+
+/**
+ * Lists all journeys for a specific customer
+ */
+type Def$w = {
+    Params: {
+        conversationUid: string;
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: never;
+    WarningCodes: never;
+};
+
+/**
+ * Lists all journeys for a specific customer
+ */
+type Def$v = {
+    Params: {
+        conversationUid: string;
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: never;
+    WarningCodes: never;
+};
+
+/**
+ * Lists all journeys for a specific customer
+ */
+type Def$u = {
+    Params: {
+        conversationUid: string;
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: never;
+    WarningCodes: never;
+};
+
+type Def$t = {
+    Params: {
+        uid: string;
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: never;
+};
+
+type Def$s = {
+    Params: {
+        uid: string;
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: never;
+};
+
+type Def$r = {
+    Params: {
+        uid: string;
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: never;
+};
+
+/**
+ * Returns a specific book
+ */
+type Def$q = {
+    Params: {
+        uid: string;
+    };
+    Data: {
+        item: TaskGroupM;
+    };
+    ErrorCodes: 'NotFound';
+    WarningCodes: never;
+};
+
+type Def$p = {
+    Params: {
+        uid: string;
+        status: TaskGroupE["data"]["status"];
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: never;
+};
+
+type Def$o = {
+    Params: {
+        conversationUid: string;
+        clientRequestId: TaskGroupE["data"]["clientRequestId"];
+    };
+    Data: {
+        uid: string;
+    };
+    ErrorCodes: never;
+};
+
+type Def$n = {
+    Params: {
+        uid: string;
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: never;
+};
+
+type Def$m = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {};
+    ErrorCodes: never;
+};
+
+type Def$l = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {};
+    ErrorCodes: never;
+};
+
+type Def$k = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {};
+    ErrorCodes: never;
+};
+
+type Def$j = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {};
+    ErrorCodes: never;
+};
+
+type Def$i = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {};
+    ErrorCodes: never;
+};
+
+type Def$h = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {};
+    ErrorCodes: never;
+};
+
+type Def$g = {
+    Params: {
+        uid: string;
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: never;
+};
+
+type Def$f = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: 'UNSUPPORTED_TASK_TYPE';
+};
+
+/**
+ * Returns a specific book
+ */
+type Def$e = {
+    Params: {
+        uid: string;
+        include?: ("taskGroup" | "predecessors")[];
+    };
+    Data: {
+        task: TaskM;
+        taskGroup?: TaskGroupM;
+        predecessors?: TaskM[];
+    };
+    ErrorCodes: 'NotFound';
+    WarningCodes: never;
+};
+
+type Def$d = {
+    Params: {
+        uid: string;
+        status?: TaskE["data"]["status"];
+        output?: TaskE["data"]["output"];
+    };
+    Data: {
+        succeed: boolean;
+    };
+    ErrorCodes: never;
+};
+
+type Def$c = {
+    Params: {
+        taskGroupUid: string;
+        predecessorUids?: string[];
+        type: TaskE["data"]["type"];
+        input: TaskE["data"]["input"];
+    };
+    Data: {
+        uid: string;
+    };
+    ErrorCodes: never;
+};
+
+type Def$b = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {};
+    ErrorCodes: never;
+};
+
+type Def$a = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {
+        output: {
+            text: string;
+            cc: string;
+        };
+    };
+    ErrorCodes: never;
+};
+
+type Def$9 = {
+    Params: {
+        taskUid: string;
+        chunkIndex: number;
+        chunk?: Buffer<ArrayBuffer>;
+        completed?: boolean;
+    };
+    Data: {};
+    ErrorCodes: never;
+};
+
+type Def$8 = {
+    Params: {
+        taskUid: string;
+        conversationUid: string;
+        type: StepE["data"]["type"];
+        chunk: TextStepOutputChunk;
+    };
+    Data: {};
+    ErrorCodes: never;
+};
+
+type UsageE = {
+    pk: ItemPK;
+    data: {
+        model: string;
+        task: 'stt' | 'tts' | 'tts-prepare' | 'teaching' | 'book-structure' | 'board-content-validate' | 'board-html-prettier' | 'board-long-div' | 'board-long-multiply';
+        type: 'tokens' | 'per-audio' | 'per-charachter';
+        cost: number;
+        tokens?: {
+            input: number;
+            cachedInput: number;
+            output: number;
+        };
+        charactersCount?: number;
+        audioMin?: number;
+        info?: string;
+    };
+    meta: MetaData;
+    links: {
+        user: ItemPK;
+        pdf?: ItemPK;
+    };
+    childs: {
+        sections: SectionE[];
+        pages: PageE[];
+    };
+};
+
+type Def$7 = {
+    Params: {
+        model: UsageE["data"]["model"];
+        task: UsageE["data"]["task"];
+        type: UsageE["data"]["type"];
+        cost: UsageE["data"]["cost"];
+        tokens?: UsageE["data"]["tokens"];
+        charactersCount?: UsageE["data"]["charactersCount"];
+        audioMin?: UsageE["data"]["audioMin"];
+        info?: UsageE["data"]["info"];
+    };
+    Data: {
+        uid: string;
+    };
+    ErrorCodes: never;
+};
+
+type Def$6 = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {
+        output: TaskE["data"]["output"];
+    };
+    ErrorCodes: never;
+};
+
+type Def$5 = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {
+        output: {
+            text: string;
+        };
+    };
+    ErrorCodes: never;
+};
+
+type Def$4 = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {
+        output: TextStepsOutput;
+    };
+    ErrorCodes: never;
+};
+
+type Def$3 = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {
+        output: TaskE["data"]["output"];
+    };
+    ErrorCodes: never;
+};
+
+type Def$2 = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {
+        output: TextStepsOutput;
+    };
+    ErrorCodes: never;
+};
+
+type Def$1 = {
+    Params: {
+        name: string;
+        args: any[];
+    };
+    Data: {
+        output: any;
+    };
+    ErrorCodes: never;
+};
+
+type CallTool$1 = Def$1;
+
+type CreateBook = Def$15;
 declare const createBook: (context: {
     getUserId: Context.GetUserId;
 }, depends: {
@@ -925,9 +1574,9 @@ declare const createBook: (context: {
     id?: string;
     title?: BookE["data"]["title"];
     language?: BookE["data"]["language"];
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$q, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$15, any>>;
 
-type UpdateBook = Def$r;
+type UpdateBook = Def$16;
 declare const updateBook: (context: {}, depends: {
     tajData: {
         updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
@@ -941,27 +1590,27 @@ declare const updateBook: (context: {}, depends: {
     title?: BookE["data"]["title"];
     language?: BookE["data"]["language"];
     pagesCount?: BookE["data"]["pagesCount"];
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$r, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$16, any>>;
 
-type GetBook = Def$s;
+type GetBook = Def$17;
 declare const getBook: (context: {}, depends: {
     tajData: {
         getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
     };
 }) => (params: {
     uid: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$s, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$17, any>>;
 
-type DeleteBook = Def$t;
+type DeleteBook = Def$18;
 declare const deleteBook: (context: {}, depends: {
     tajData: {
         deleteItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.DeleteItem>;
     };
 }) => (params: {
     uid: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$t, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$18, any>>;
 
-type ListMyBooks = Def$u;
+type ListMyBooks = Def$19;
 declare const listMyBooks: (context: {
     getUserId: Context.GetUserId;
 }, depends: {
@@ -972,9 +1621,9 @@ declare const listMyBooks: (context: {
     listBooks: _dija_gormic_service_kit_domain.Service<ListBooks>;
 }) => (params: {
     query?: _dija_gormic_service_kit_domain.ListQueryParams<never, never>;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$u, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$19, any>>;
 
-type AnalyzeBook = Def$w;
+type AnalyzeBook = Def$1b;
 declare const analyzeBook: (context: {
     getUserId: Context.GetUserId;
     generateBookStructure: Context.generateBookStructure;
@@ -991,9 +1640,9 @@ declare const analyzeBook: (context: {
     };
 }) => (params: {
     uid: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$w, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$1b, any>>;
 
-type ArchiveBook = Def$x;
+type ArchiveBook = Def$1c;
 declare const archiveBook: (context: {
     getClientIamId: Context.GetClientIamId;
     getClientUserId: Context.GetClientUserId;
@@ -1006,9 +1655,9 @@ declare const archiveBook: (context: {
     };
 }) => (params: {
     uid: string;
-}, scope: any) => Promise<ServiceResult<Def$x>>;
+}, scope: any) => Promise<ServiceResult<Def$1c>>;
 
-type RestoreBook = Def$y;
+type RestoreBook = Def$1d;
 declare const restoreBook: (context: {}, depends: {
     tajData: {
         getItem: Service<_dija_taj_data_services.GetItem>;
@@ -1016,9 +1665,9 @@ declare const restoreBook: (context: {}, depends: {
     };
 }) => (params: {
     uid: string;
-}, scope: any) => Promise<ServiceResult<Def$y>>;
+}, scope: any) => Promise<ServiceResult<Def$1d>>;
 
-type DeleteMyBook = Def$z;
+type DeleteMyBook = Def$1e;
 declare const deleteMyBook: (context: {
     getUserId: Context.GetUserId;
 }, depends: {
@@ -1029,9 +1678,9 @@ declare const deleteMyBook: (context: {
     getBook: _dija_gormic_service_kit_domain.Service<GetBook>;
 }) => (params: {
     uid: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$z, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$1e, any>>;
 
-type CreateUpload = Def$h;
+type CreateUpload = Def$W;
 declare const createUpload: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1046,18 +1695,18 @@ declare const createUpload: (context: {}, depends: {
     height: PageE["data"]["height"];
     fileSize: PageE["data"]["fileSize"];
     pageNumber?: PageE["data"]["pageNumber"];
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$h, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$W, any>>;
 
-type GetUpload = Def$i;
+type GetUpload = Def$X;
 declare const getUpload: (context: {}, depends: {
     tajData: {
         getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
     };
 }) => (params: {
     uid: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$i, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$X, any>>;
 
-type UploadPdf = Def$j;
+type UploadPdf = Def$Y;
 declare const uploadPdf: (context: {
     appendFile: Context.AppendFile;
     pdfToImages: Context.PdfToImages;
@@ -1077,9 +1726,9 @@ declare const uploadPdf: (context: {
     chunkIndex?: number;
     chunk?: any;
     completed?: boolean;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$j, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$Y, any>>;
 
-type ProcessPdf = Def$k;
+type ProcessPdf = Def$Z;
 declare const processPdf: (context: {
     pdfToImages: Context.PdfToImages;
 }, depends: {
@@ -1094,9 +1743,9 @@ declare const processPdf: (context: {
 }) => (params: {
     bookUid: string;
     uploadUid: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$k, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$Z, any>>;
 
-type onPdfParsed = Def$l;
+type onPdfParsed = Def$_;
 declare const onPdfParsed: (context: {
     pdfToImages: Context.PdfToImages;
 }, depends: {
@@ -1113,9 +1762,9 @@ declare const onPdfParsed: (context: {
     uploadUid: string;
     title?: string;
     pagesCount: number;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$l, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$_, any>>;
 
-type OnPdfPageParsed = Def$m;
+type OnPdfPageParsed = Def$$;
 declare const onPdfPageParsed: (context: {
     pdfToImages: Context.PdfToImages;
     extractText: Context.extractText;
@@ -1136,9 +1785,9 @@ declare const onPdfPageParsed: (context: {
     width: number;
     height: number;
     fileSize: number;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$m, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$$, any>>;
 
-type OnPdfParseEnd = Def$n;
+type OnPdfParseEnd = Def$10;
 declare const onPdfParseEnd: (context: {
     pdfToImages: Context.PdfToImages;
     extractText: Context.extractText;
@@ -1158,9 +1807,31 @@ declare const onPdfParseEnd: (context: {
     };
 }) => (params: {
     uploadUid: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$n, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$10, any>>;
 
-type CreatePage = Def$o;
+type UploadImageToConversation = Def$11;
+declare const uploadImageToConversation: (context: {
+    appendFile: Context.AppendFile;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    createTaskGroup: _dija_gormic_service_kit_domain.Service<CreateTaskGroup>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+}) => (params: {
+    conversationUid: string;
+    fileId: string;
+    fileName: string;
+    fileSize: number;
+    chunkIndex?: number;
+    chunk?: any;
+    completed?: boolean;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$11, any>>;
+
+type CreatePage = Def$12;
 declare const createPage: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1176,9 +1847,9 @@ declare const createPage: (context: {}, depends: {
     fileSize: PageE["data"]["fileSize"];
     pageNumber?: PageE["data"]["pageNumber"];
     sectionId?: PageE["data"]["sectionId"];
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$o, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$12, any>>;
 
-type UpdatePage = Def$p;
+type UpdatePage = Def$13;
 declare const updatePage: (context: {}, depends: {
     tajData: {
         updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
@@ -1195,9 +1866,25 @@ declare const updatePage: (context: {}, depends: {
     pageNumber?: PageE["data"]["pageNumber"];
     sectionId?: PageE["data"]["sectionId"];
     textExtracted?: PageE["data"]["textExtracted"];
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$p, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$13, any>>;
 
-type SignUp = Def$4;
+type AnalyzePage = Def$14;
+declare const analyzePage: (context: {
+    analyzePage: Context.analyzePage;
+}, depends: {
+    tajData: {
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    createPageAnalysis: _dija_gormic_service_kit_domain.Service<CreatePageAnalysis>;
+    getBook: _dija_gormic_service_kit_domain.Service<GetBook>;
+}) => (params: {
+    uid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$14, any>>;
+
+type SignUp = Def$I;
 declare const signUp: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1210,9 +1897,9 @@ declare const signUp: (context: {}, depends: {
 }) => (params: {
     email: string;
     password: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$4, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$I, any>>;
 
-type SignIn = Def$5;
+type SignIn = Def$J;
 declare const signIn: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1228,9 +1915,9 @@ declare const signIn: (context: {}, depends: {
 }) => (params: {
     email: string;
     password: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$5, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$J, any>>;
 
-type GetUserByEmail = Def$6;
+type GetUserByEmail = Def$K;
 declare const getUserByEmail: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1242,9 +1929,9 @@ declare const getUserByEmail: (context: {}, depends: {
     getUser: _dija_gormic_service_kit_domain.Service<GetUser>;
 }) => (params: {
     email: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$6, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$K, any>>;
 
-type GetCurrentUser = Def$7;
+type GetCurrentUser = Def$L;
 declare const getCurrentUser: (context: {
     getUserId: Context.GetUserId;
 }, depends: {
@@ -1252,9 +1939,9 @@ declare const getCurrentUser: (context: {
         getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
     };
     getUser: _dija_gormic_service_kit_domain.Service<GetUser>;
-}) => (params: {}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$7, any>>;
+}) => (params: {}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$L, any>>;
 
-type RefreshAccessToken = Def$9;
+type RefreshAccessToken = Def$N;
 declare const refreshAccessToken: (context: {
     getUserId: Context.GetUserId;
 }, depends: {
@@ -1271,9 +1958,9 @@ declare const refreshAccessToken: (context: {
     };
 }) => (params: {
     refreshToken: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$9, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$N, any>>;
 
-type SendResetPassword = Def$a;
+type SendResetPassword = Def$O;
 declare const sendResetPassword: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1285,9 +1972,9 @@ declare const sendResetPassword: (context: {}, depends: {
     getUserByEmail: _dija_gormic_service_kit_domain.Service<GetUserByEmail>;
 }) => (params: {
     email: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$a, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$O, any>>;
 
-type SendEmailOtp = Def$b;
+type SendEmailOtp = Def$P;
 declare const sendEmailOtp: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1300,9 +1987,9 @@ declare const sendEmailOtp: (context: {}, depends: {
     getUserByEmail: _dija_gormic_service_kit_domain.Service<GetUserByEmail>;
 }) => (params: {
     email: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$b, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$P, any>>;
 
-type VerifyEmailOtp = Def$c;
+type VerifyEmailOtp = Def$Q;
 declare const verifyEmailOtp: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1317,9 +2004,9 @@ declare const verifyEmailOtp: (context: {}, depends: {
     email: string;
     token: string;
     otp: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$c, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$Q, any>>;
 
-type ResetPassword = Def$d;
+type ResetPassword = Def$R;
 declare const resetPassword: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1333,9 +2020,9 @@ declare const resetPassword: (context: {}, depends: {
 }) => (params: {
     token: string;
     newPassword: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$d, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$R, any>>;
 
-type ChangePassword = Def$e;
+type ChangePassword = Def$S;
 declare const changePassword: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1349,9 +2036,9 @@ declare const changePassword: (context: {}, depends: {
 }) => (params: {
     oldPassword: string;
     newPassword: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$e, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$S, any>>;
 
-type UpdateMyInfo = Def$f;
+type UpdateMyInfo = Def$T;
 declare const updateMyInfo: (context: {
     getUserId: Context.GetUserId;
 }, depends: {
@@ -1368,18 +2055,51 @@ declare const updateMyInfo: (context: {
     gender?: UserE["data"]["gender"];
     birthdate?: UserE["data"]["birthdate"];
     preferedLang?: UserE["data"]["preferedLang"];
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$f, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$T, any>>;
 
-type GetBookText = Def$2;
+type ListUsers = Def$V;
+declare const listUsers: (context: {}, depends: {
+    tajData: {
+        getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+    };
+}) => (params: {
+    query?: _dija_gormic_service_kit_domain.ListQueryParams<never, never>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$V, any>>;
+
+type GetPageAnalysis = Def$G;
+declare const getPageAnalysis: (context: {}, depends: {
+    tajData: {
+        getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
+    };
+}) => (params: {
+    uid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$G, any>>;
+
+type CreatePageAnalysis = Def$H;
+declare const createPageAnalysis: (context: {}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+}) => (params: {
+    bookUid: string;
+    pageIndex: number;
+    parts: PageAnalysisE["data"]["parts"];
+    words: PageAnalysisE["data"]["words"];
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$H, any>>;
+
+type GetBookText = Def$F;
 declare const getBookText: (context: {}, depends: {
     tajData: {
         getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
     };
 }) => (params: {
     uid: string;
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$2, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$F, any>>;
 
-type CreatePageText = Def$1;
+type CreatePageText = Def$E;
 declare const createPageText: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1391,9 +2111,9 @@ declare const createPageText: (context: {}, depends: {
     bookUid: string;
     pageIndex: number;
     text: PageTextE["data"]["text"];
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$1, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$E, any>>;
 
-type CreateSection = Def;
+type CreateSection = Def$D;
 declare const createSection: (context: {}, depends: {
     tajData: {
         getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1405,16 +2125,645 @@ declare const createSection: (context: {}, depends: {
     bookUid: string;
     sectionIndex: number;
     title: SectionE["data"]["title"];
-}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def, any>>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$D, any>>;
 
-type GetPageAnalysis = Def$3;
-declare const getPageAnalysis: (context: {}, depends: {
+type HandleMsg = Def$z;
+declare const handleMsg: (context: {
+    getUserId: Context.GetUserId;
+    generateBookStructure: Context.generateBookStructure;
+    sendToClient: Context.sendToClient;
+}, depends: {
+    tajData: {
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    createConversation: _dija_gormic_service_kit_domain.Service<CreateConversation>;
+    updateConversation: _dija_gormic_service_kit_domain.Service<UpdateConversation>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    openaiSendText: _dija_gormic_service_kit_domain.Service<OpenaiSendText>;
+    getBook: _dija_gormic_service_kit_domain.Service<GetBook>;
+    getPageAnalysis: _dija_gormic_service_kit_domain.Service<GetPageAnalysis>;
+    analyzePage: _dija_gormic_service_kit_domain.Service<AnalyzePage>;
+    cancelCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<CancelCoversationTaskGroups>;
+    listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+    pauseCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<PauseCoversationTaskGroups>;
+    resumeCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ResumeCoversationTaskGroups>;
+    createTaskGroup: _dija_gormic_service_kit_domain.Service<CreateTaskGroup>;
+}) => (params: {
+    conversationUid: string;
+    requestId: string;
+    language: ConversationE["data"]["language"];
+    bookUid?: MessageE["data"]["bookUid"];
+    pageIndex?: MessageE["data"]["pageIndex"];
+    stepId?: MessageE["data"]["stepUid"];
+    event?: "audio" | "json" | "cancel" | "pause" | "resume";
+    recordingId?: boolean;
+    preroll?: boolean;
+    data?: string;
+    ended?: boolean;
+    avgIsSpeech: number;
+    loudnessDbfs: number;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$z, any>>;
+
+type CreateConversation = Def$A;
+declare const createConversation: (context: {
+    getUserId: Context.GetUserId;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+}) => (params: {
+    language: ConversationE["data"]["language"];
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$A, any>>;
+
+type UpdateConversation = Def$B;
+declare const updateConversation: (context: {}, depends: {
+    tajData: {
+        updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
+        deleteItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.DeleteItem>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+    };
+}) => (params: {
+    uid: string;
+    language?: ConversationE["data"]["language"];
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$B, any>>;
+
+type GetConversationLite = Def$C;
+declare const getConversationLite: (context: {
+    getUserId: Context.GetUserId;
+    getPageImageBase64: Context.getPageImageBase64;
+    sendToClient: Context.sendToClient;
+}, depends: {
+    tajData: {
+        getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        lock: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Lock>;
+    };
+    getBook: _dija_gormic_service_kit_domain.Service<GetBook>;
+    getPageAnalysis: _dija_gormic_service_kit_domain.Service<GetPageAnalysis>;
+    analyzePage: _dija_gormic_service_kit_domain.Service<AnalyzePage>;
+    listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+}) => (params: {
+    conversationUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$C, any>>;
+
+type CompactForTextSteps = Def$y;
+declare const compactForTextSteps: (context: {
+    getUserId: Context.GetUserId;
+    getPageImageBase64: Context.getPageImageBase64;
+    sendToClient: Context.sendToClient;
+}, depends: {
+    tajData: {
+        getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        lock: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Lock>;
+    };
+    getBook: _dija_gormic_service_kit_domain.Service<GetBook>;
+    getPageAnalysis: _dija_gormic_service_kit_domain.Service<GetPageAnalysis>;
+    analyzePage: _dija_gormic_service_kit_domain.Service<AnalyzePage>;
+    listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+}) => (params: {
+    conversationUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$y, any>>;
+
+type CreateTaskGroup = Def$o;
+declare const createTaskGroup: (context: {
+    getUserId: Context.GetUserId;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+}) => (params: {
+    conversationUid: string;
+    clientRequestId: TaskGroupE["data"]["clientRequestId"];
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$o, any>>;
+
+type UpdateTaskGroup = Def$p;
+declare const updateTaskGroup: (context: {}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+}) => (params: {
+    uid: string;
+    status: TaskGroupE["data"]["status"];
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$p, any>>;
+
+type GetTaskGroup = Def$q;
+declare const getTaskGroup: (context: {}, depends: {
     tajData: {
         getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
     };
 }) => (params: {
     uid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$q, any>>;
+
+type CancelTaskGroup = Def$r;
+declare const cancelTaskGroup: (context: {}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTaskGroup: _dija_gormic_service_kit_domain.Service<GetTaskGroup>;
+    cancelTask: _dija_gormic_service_kit_domain.Service<CancelTask>;
+    updateTaskGroup: _dija_gormic_service_kit_domain.Service<UpdateTaskGroup>;
+}) => (params: {
+    uid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$r, any>>;
+
+type PauseTaskGroup = Def$s;
+declare const pauseTaskGroup: (context: {
+    pauseTaskGroup: Context.pauseTaskGroup;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTaskGroup: _dija_gormic_service_kit_domain.Service<GetTaskGroup>;
+    updateTaskGroup: _dija_gormic_service_kit_domain.Service<UpdateTaskGroup>;
+}) => (params: {
+    uid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$s, any>>;
+
+type ResumeTaskGroup = Def$t;
+declare const resumeTaskGroup: (context: {
+    resumeTaskGroup: Context.resumeTaskGroup;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTaskGroup: _dija_gormic_service_kit_domain.Service<GetTaskGroup>;
+    updateTaskGroup: _dija_gormic_service_kit_domain.Service<UpdateTaskGroup>;
+}) => (params: {
+    uid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$t, any>>;
+
+type CancelCoversationTaskGroups = Def$u;
+declare const cancelCoversationTaskGroups: (context: {
+    getUserId: Context.GetUserId;
+}, depends: {
+    tajData: {
+        getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+    };
+    listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+    cancelTaskGroup: _dija_gormic_service_kit_domain.Service<CancelTaskGroup>;
+}) => (params: {
+    conversationUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$u, any>>;
+
+type PauseCoversationTaskGroups = Def$v;
+declare const pauseCoversationTaskGroups: (context: {
+    getUserId: Context.GetUserId;
+}, depends: {
+    tajData: {
+        getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+    };
+    listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+    pauseTaskGroup: _dija_gormic_service_kit_domain.Service<PauseTaskGroup>;
+}) => (params: {
+    conversationUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$v, any>>;
+
+type ResumeCoversationTaskGroups = Def$w;
+declare const resumeCoversationTaskGroups: (context: {
+    getUserId: Context.GetUserId;
+}, depends: {
+    tajData: {
+        getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+    };
+    listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+    resumeTaskGroup: _dija_gormic_service_kit_domain.Service<ResumeTaskGroup>;
+}) => (params: {
+    conversationUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$w, any>>;
+
+type ListCoversationTaskGroups = Def$x;
+declare const listCoversationTaskGroups: (context: {
+    getUserId: Context.GetUserId;
+}, depends: {
+    tajData: {
+        getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+    };
+}) => (params: {
+    conversationUid: string;
+    query?: _dija_gormic_service_kit_domain.ListQueryParams<never, never>;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$x, any>>;
+
+type OnTextStepChunk = Def$8;
+declare const onTextStepChunk: (context: {
+    getClientLanguage: Context.getClientLanguage;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+}) => (params: {
+    taskUid: string;
+    conversationUid: string;
+    type: StepE["data"]["type"];
+    chunk: TextStepOutputChunk;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$8, any>>;
+
+type OnTTSChunk = Def$9;
+declare const onTTSChunk: (context: {
+    getClientLanguage: Context.getClientLanguage;
+    sendToClient: Context.sendToClient;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+}) => (params: {
+    taskUid: string;
+    chunkIndex: number;
+    chunk?: Buffer<ArrayBuffer>;
+    completed?: boolean;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$9, any>>;
+
+type PreTTS = Def$a;
+declare const preTTS: (context: {
+    getClientLanguage: Context.getClientLanguage;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$a, any>>;
+
+type Def = {
+    Params: {
+        taskUid: string;
+    };
+    Data: {
+        output: {
+            textToSay?: string;
+            html?: string;
+        };
+    };
+    ErrorCodes: never;
+};
+
+type ProcessTextStep = Def;
+
+type CheckCompletion = Def$b;
+declare const checkCompletion: (context: {
+    getClientLanguage: Context.getClientLanguage;
+    sendToClient: Context.sendToClient;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+    updateTaskGroup: _dija_gormic_service_kit_domain.Service<UpdateTaskGroup>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$b, any>>;
+
+type CreateTask = Def$c;
+declare const createTask: (context: {
+    getUserId: Context.GetUserId;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+}) => (params: {
+    taskGroupUid: string;
+    predecessorUids?: string[];
+    type: TaskE["data"]["type"];
+    input: TaskE["data"]["input"];
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$c, any>>;
+
+type UpdateTask = Def$d;
+declare const updateTask: (context: {}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+}) => (params: {
+    uid: string;
+    status?: TaskE["data"]["status"];
+    output?: TaskE["data"]["output"];
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$d, any>>;
+
+type GetTask = Def$e;
+declare const getTask: (context: {}, depends: {
+    tajData: {
+        getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
+    };
+    getTaskGroup: _dija_gormic_service_kit_domain.Service<GetTaskGroup>;
+}) => (params: {
+    uid: string;
+    include?: ("taskGroup" | "predecessors")[];
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$e, any>>;
+
+type StartTask = Def$f;
+declare const startTask: (context: {
+    getUserId: Context.GetUserId;
+    getOpenaiSession: Context.getOpenaiSession;
+    startTask: Context.startTask;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    getTaskGroup: _dija_gormic_service_kit_domain.Service<GetTaskGroup>;
+    updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+    openaiSendText: _dija_gormic_service_kit_domain.Service<OpenaiSendText>;
+    openaiTTSPrepare: _dija_gormic_service_kit_domain.Service<OpenaiTTSPrepare>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    openaiValidateBoard: _dija_gormic_service_kit_domain.Service<OpenaiValidateBoard>;
+    executeSendText: _dija_gormic_service_kit_domain.Service<ExecuteSendText>;
+    executeProcessTextStep: _dija_gormic_service_kit_domain.Service<ExecuteProcessTextStep>;
+    executeTTSPrepare: _dija_gormic_service_kit_domain.Service<ExecuteTTSPrepare>;
+    executeValidateBoard: _dija_gormic_service_kit_domain.Service<ExecuteValidateBoard>;
+    executePreTTS: _dija_gormic_service_kit_domain.Service<ExecutePreTTS>;
+    executeTTS: _dija_gormic_service_kit_domain.Service<ExecuteTTS>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$f, any>>;
+
+type CancelTask = Def$g;
+declare const cancelTask: (context: {
+    cancelTask: Context.cancelTask;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+}) => (params: {
+    uid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$g, any>>;
+
+type ExecutePreTTS = Def$h;
+declare const executePreTTS: (context: {
+    getClientLanguage: Context.getClientLanguage;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    openaiValidateBoard: _dija_gormic_service_kit_domain.Service<OpenaiValidateBoard>;
+    preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+    updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$h, any>>;
+
+type ExecuteProcessTextStep = Def$i;
+declare const executeProcessTextStep: (context: {
+    getClientLanguage: Context.getClientLanguage;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$i, any>>;
+
+type ExecuteSendText = Def$j;
+declare const executeSendText: (context: {
+    getClientLanguage: Context.getClientLanguage;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    openaiSendText: _dija_gormic_service_kit_domain.Service<OpenaiSendText>;
+    geminiSendText: _dija_gormic_service_kit_domain.Service<GeminiSendText>;
+    preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+    updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+    onTextStepChunk: _dija_gormic_service_kit_domain.Service<OnTextStepChunk>;
+    checkCompletion: _dija_gormic_service_kit_domain.Service<CheckCompletion>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$j, any>>;
+
+type ExecuteTTS = Def$k;
+declare const executeTTS: (context: {
+    getClientLanguage: Context.getClientLanguage;
+    sendToClient: Context.sendToClient;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    grokTTS: _dija_gormic_service_kit_domain.Service<GrokTTS>;
+    updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+    checkCompletion: _dija_gormic_service_kit_domain.Service<CheckCompletion>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$k, any>>;
+
+type ExecuteTTSPrepare = Def$l;
+declare const executeTTSPrepare: (context: {
+    getClientLanguage: Context.getClientLanguage;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    openaiTTSPrepare: _dija_gormic_service_kit_domain.Service<OpenaiTTSPrepare>;
+    preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+    updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$l, any>>;
+
+type ExecuteValidateBoard = Def$m;
+declare const executeValidateBoard: (context: {
+    getClientLanguage: Context.getClientLanguage;
+}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    openaiValidateBoard: _dija_gormic_service_kit_domain.Service<OpenaiValidateBoard>;
+    preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+    updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$m, any>>;
+
+type CallTool = Def$n;
+declare const callTool: (context: {}, depends: {}) => (params: {
+    uid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$n, any>>;
+
+type CreateUsage = Def$7;
+declare const createUsage: (context: {}, depends: {
+    tajData: {
+        getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+        getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+    };
+}) => (params: {
+    model: UsageE["data"]["model"];
+    task: UsageE["data"]["task"];
+    type: UsageE["data"]["type"];
+    cost: UsageE["data"]["cost"];
+    tokens?: UsageE["data"]["tokens"];
+    charactersCount?: UsageE["data"]["charactersCount"];
+    audioMin?: UsageE["data"]["audioMin"];
+    info?: UsageE["data"]["info"];
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$7, any>>;
+
+type OpenaiSendText = Def$4;
+declare const openaiSendText: (context: {
+    getUserId: Context.GetUserId;
+    getOpenaiSession: Context.getOpenaiSession;
+    getTaskAbortContoller: Context.getTaskAbortContoller;
+}, depends: {
+    onTextStepChunk: _dija_gormic_service_kit_domain.Service<OnTextStepChunk>;
+    createUsage: _dija_gormic_service_kit_domain.Service<CreateUsage>;
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    compactForTextSteps: _dija_gormic_service_kit_domain.Service<CompactForTextSteps>;
+    callTool: _dija_gormic_service_kit_domain.Service<CallTool$1>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$4, any>>;
+
+type OpenaiTTSPrepare = Def$5;
+declare const openaiTTSPrepare: (context: {
+    getUserId: Context.GetUserId;
+    getOpenaiSession: Context.getOpenaiSession;
+}, depends: {
+    createUsage: _dija_gormic_service_kit_domain.Service<CreateUsage>;
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$5, any>>;
+
+type OpenaiValidateBoard = Def$6;
+declare const openaiValidateBoard: (context: {
+    getUserId: Context.GetUserId;
+    getOpenaiSession: Context.getOpenaiSession;
+}, depends: {
+    createUsage: _dija_gormic_service_kit_domain.Service<CreateUsage>;
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$6, any>>;
+
+type GrokTTS = Def$3;
+declare const grokTTS: (context: {
+    getUserId: Context.GetUserId;
+    getTaskAbortContoller: Context.getTaskAbortContoller;
+}, depends: {
+    onTTSChunk: _dija_gormic_service_kit_domain.Service<OnTTSChunk>;
+    createUsage: _dija_gormic_service_kit_domain.Service<CreateUsage>;
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+}) => (params: {
+    taskUid: string;
 }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$3, any>>;
+
+type GeminiSendText = Def$2;
+declare const geminiSendText: (context: {
+    getUserId: Context.GetUserId;
+    getTaskAbortContoller: Context.getTaskAbortContoller;
+}, depends: {
+    onTextStepChunk: _dija_gormic_service_kit_domain.Service<OnTextStepChunk>;
+    createUsage: _dija_gormic_service_kit_domain.Service<CreateUsage>;
+    getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    compactForTextSteps: _dija_gormic_service_kit_domain.Service<CompactForTextSteps>;
+    callTool: _dija_gormic_service_kit_domain.Service<CallTool$1>;
+}) => (params: {
+    taskUid: string;
+}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$2, any>>;
 
 type LongDivisionContent = {
     parts: {
@@ -1433,7 +2782,9 @@ type LongMultiplicationContent = {
 
 declare const APP_ID = "edu-ai";
 declare const DEPLOYMENT_ID = "edu-ai-v1-1";
-declare const HOST = "http://192.168.100.222:9004";
+declare const HOST: string | undefined;
+declare const MAX_INPUT_TOKENS = 250000;
+declare const STT_MODE: 'separate' | 'gemini';
 declare const DATA_SCHEMA: {
     collections: {
         books: string;
@@ -1445,11 +2796,19 @@ declare const DATA_SCHEMA: {
         uploads: string;
         users: string;
         credentials: string;
+        conversations: string;
+        messages: string;
+        taskGroups: string;
+        tasks: string;
+        steps: string;
+        usages: string;
     };
     links: {
         user_book: string;
         book_pdf: string;
         credentials_user: string;
+        taskGroup_conversation: string;
+        user_conversation: string;
     };
     sequences: {};
 };
@@ -1556,6 +2915,108 @@ declare const UID_SCHEMA: {
             id: string;
         };
     };
+    conversations: {
+        toUid: (pk: _dija_taj_data_services.ItemPK) => string;
+        parse: (uid: string) => _dija_taj_data_services.ItemPK;
+        generate: (parent?: _dija_taj_data_services.ItemPK, opts?: {
+            msecs?: number;
+        }) => {
+            pk: {
+                cid: string;
+                pid: string | undefined;
+                id: string;
+                parent: _dija_taj_data_services.ItemPK | undefined;
+                childKey: string | undefined;
+            };
+            uid: string;
+            id: string;
+        };
+    };
+    messages: {
+        toUid: (pk: _dija_taj_data_services.ItemPK) => string;
+        parse: (uid: string) => _dija_taj_data_services.ItemPK;
+        generate: (parent?: _dija_taj_data_services.ItemPK, opts?: {
+            msecs?: number;
+        }) => {
+            pk: {
+                cid: string;
+                pid: string | undefined;
+                id: string;
+                parent: _dija_taj_data_services.ItemPK | undefined;
+                childKey: string | undefined;
+            };
+            uid: string;
+            id: string;
+        };
+    };
+    taskGroups: {
+        toUid: (pk: _dija_taj_data_services.ItemPK) => string;
+        parse: (uid: string) => _dija_taj_data_services.ItemPK;
+        generate: (parent?: _dija_taj_data_services.ItemPK, opts?: {
+            msecs?: number;
+        }) => {
+            pk: {
+                cid: string;
+                pid: string | undefined;
+                id: string;
+                parent: _dija_taj_data_services.ItemPK | undefined;
+                childKey: string | undefined;
+            };
+            uid: string;
+            id: string;
+        };
+    };
+    tasks: {
+        toUid: (pk: _dija_taj_data_services.ItemPK) => string;
+        parse: (uid: string) => _dija_taj_data_services.ItemPK;
+        generate: (parent?: _dija_taj_data_services.ItemPK, opts?: {
+            msecs?: number;
+        }) => {
+            pk: {
+                cid: string;
+                pid: string | undefined;
+                id: string;
+                parent: _dija_taj_data_services.ItemPK | undefined;
+                childKey: string | undefined;
+            };
+            uid: string;
+            id: string;
+        };
+    };
+    usages: {
+        toUid: (pk: _dija_taj_data_services.ItemPK) => string;
+        parse: (uid: string) => _dija_taj_data_services.ItemPK;
+        generate: (parent?: _dija_taj_data_services.ItemPK, opts?: {
+            msecs?: number;
+        }) => {
+            pk: {
+                cid: string;
+                pid: string | undefined;
+                id: string;
+                parent: _dija_taj_data_services.ItemPK | undefined;
+                childKey: string | undefined;
+            };
+            uid: string;
+            id: string;
+        };
+    };
+    steps: {
+        toUid: (pk: _dija_taj_data_services.ItemPK) => string;
+        parse: (uid: string) => _dija_taj_data_services.ItemPK;
+        generate: (parent?: _dija_taj_data_services.ItemPK, opts?: {
+            msecs?: number;
+        }) => {
+            pk: {
+                cid: string;
+                pid: string | undefined;
+                id: string;
+                parent: _dija_taj_data_services.ItemPK | undefined;
+                childKey: string | undefined;
+            };
+            uid: string;
+            id: string;
+        };
+    };
 };
 
 type ServicesT = {
@@ -1586,6 +3047,555 @@ declare const checkMissingParams: <ParamsT>(params: ParamsT, mandatory: (keyof P
 declare function embeddedUuidV7(timeMs?: number): string;
 
 declare const servicesLib: {
+    geminiSendText: (context: {
+        getUserId: Context.GetUserId;
+        getTaskAbortContoller: Context.getTaskAbortContoller;
+    }, depends: {
+        onTextStepChunk: _dija_gormic_service_kit_domain.Service<OnTextStepChunk>;
+        createUsage: _dija_gormic_service_kit_domain.Service<CreateUsage>;
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        compactForTextSteps: _dija_gormic_service_kit_domain.Service<CompactForTextSteps>;
+        callTool: _dija_gormic_service_kit_domain.Service<CallTool$1>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$2, any>>;
+    grokTTS: (context: {
+        getUserId: Context.GetUserId;
+        getTaskAbortContoller: Context.getTaskAbortContoller;
+    }, depends: {
+        onTTSChunk: _dija_gormic_service_kit_domain.Service<OnTTSChunk>;
+        createUsage: _dija_gormic_service_kit_domain.Service<CreateUsage>;
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$3, any>>;
+    openaiSendText: (context: {
+        getUserId: Context.GetUserId;
+        getOpenaiSession: Context.getOpenaiSession;
+        getTaskAbortContoller: Context.getTaskAbortContoller;
+    }, depends: {
+        onTextStepChunk: _dija_gormic_service_kit_domain.Service<OnTextStepChunk>;
+        createUsage: _dija_gormic_service_kit_domain.Service<CreateUsage>;
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        compactForTextSteps: _dija_gormic_service_kit_domain.Service<CompactForTextSteps>;
+        callTool: _dija_gormic_service_kit_domain.Service<CallTool$1>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$4, any>>;
+    openaiTTSPrepare: (context: {
+        getUserId: Context.GetUserId;
+        getOpenaiSession: Context.getOpenaiSession;
+    }, depends: {
+        createUsage: _dija_gormic_service_kit_domain.Service<CreateUsage>;
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$5, any>>;
+    openaiValidateBoard: (context: {
+        getUserId: Context.GetUserId;
+        getOpenaiSession: Context.getOpenaiSession;
+    }, depends: {
+        createUsage: _dija_gormic_service_kit_domain.Service<CreateUsage>;
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$6, any>>;
+    createUsage: (context: {}, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+    }) => (params: {
+        model: UsageE["data"]["model"];
+        task: UsageE["data"]["task"];
+        type: UsageE["data"]["type"];
+        cost: UsageE["data"]["cost"];
+        tokens?: UsageE["data"]["tokens"];
+        charactersCount?: UsageE["data"]["charactersCount"];
+        audioMin?: UsageE["data"]["audioMin"];
+        info?: UsageE["data"]["info"];
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$7, any>>;
+    onTextStepChunk: (context: {
+        getClientLanguage: Context.getClientLanguage;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+    }) => (params: {
+        taskUid: string;
+        conversationUid: string;
+        type: StepE["data"]["type"];
+        chunk: TextStepOutputChunk;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$8, any>>;
+    onTTSChunk: (context: {
+        getClientLanguage: Context.getClientLanguage;
+        sendToClient: Context.sendToClient;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+    }) => (params: {
+        taskUid: string;
+        chunkIndex: number;
+        chunk?: Buffer<ArrayBuffer>;
+        completed?: boolean;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$9, any>>;
+    preTTS: (context: {
+        getClientLanguage: Context.getClientLanguage;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$a, any>>;
+    checkCompletion: (context: {
+        getClientLanguage: Context.getClientLanguage;
+        sendToClient: Context.sendToClient;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+        updateTaskGroup: _dija_gormic_service_kit_domain.Service<UpdateTaskGroup>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$b, any>>;
+    createTask: (context: {
+        getUserId: Context.GetUserId;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+    }) => (params: {
+        taskGroupUid: string;
+        predecessorUids?: string[];
+        type: TaskE["data"]["type"];
+        input: TaskE["data"]["input"];
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$c, any>>;
+    updateTask: (context: {}, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+    }) => (params: {
+        uid: string;
+        status?: TaskE["data"]["status"];
+        output?: TaskE["data"]["output"];
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$d, any>>;
+    getTask: (context: {}, depends: {
+        tajData: {
+            getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
+        };
+        getTaskGroup: _dija_gormic_service_kit_domain.Service<GetTaskGroup>;
+    }) => (params: {
+        uid: string;
+        include?: ("taskGroup" | "predecessors")[];
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$e, any>>;
+    startTask: (context: {
+        getUserId: Context.GetUserId;
+        getOpenaiSession: Context.getOpenaiSession;
+        startTask: Context.startTask;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        getTaskGroup: _dija_gormic_service_kit_domain.Service<GetTaskGroup>;
+        updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+        openaiSendText: _dija_gormic_service_kit_domain.Service<OpenaiSendText>;
+        openaiTTSPrepare: _dija_gormic_service_kit_domain.Service<OpenaiTTSPrepare>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        openaiValidateBoard: _dija_gormic_service_kit_domain.Service<OpenaiValidateBoard>;
+        executeSendText: _dija_gormic_service_kit_domain.Service<ExecuteSendText>;
+        executeProcessTextStep: _dija_gormic_service_kit_domain.Service<ExecuteProcessTextStep>;
+        executeTTSPrepare: _dija_gormic_service_kit_domain.Service<ExecuteTTSPrepare>;
+        executeValidateBoard: _dija_gormic_service_kit_domain.Service<ExecuteValidateBoard>;
+        executePreTTS: _dija_gormic_service_kit_domain.Service<ExecutePreTTS>;
+        executeTTS: _dija_gormic_service_kit_domain.Service<ExecuteTTS>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$f, any>>;
+    cancelTask: (context: {
+        cancelTask: Context.cancelTask;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+    }) => (params: {
+        uid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$g, any>>;
+    executePreTTS: (context: {
+        getClientLanguage: Context.getClientLanguage;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        openaiValidateBoard: _dija_gormic_service_kit_domain.Service<OpenaiValidateBoard>;
+        preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+        updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$h, any>>;
+    executeProcessTextStep: (context: {
+        getClientLanguage: Context.getClientLanguage;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$i, any>>;
+    executeSendText: (context: {
+        getClientLanguage: Context.getClientLanguage;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        openaiSendText: _dija_gormic_service_kit_domain.Service<OpenaiSendText>;
+        geminiSendText: _dija_gormic_service_kit_domain.Service<GeminiSendText>;
+        preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+        updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+        onTextStepChunk: _dija_gormic_service_kit_domain.Service<OnTextStepChunk>;
+        checkCompletion: _dija_gormic_service_kit_domain.Service<CheckCompletion>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$j, any>>;
+    executeTTS: (context: {
+        getClientLanguage: Context.getClientLanguage;
+        sendToClient: Context.sendToClient;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        grokTTS: _dija_gormic_service_kit_domain.Service<GrokTTS>;
+        updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+        checkCompletion: _dija_gormic_service_kit_domain.Service<CheckCompletion>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$k, any>>;
+    executeTTSPrepare: (context: {
+        getClientLanguage: Context.getClientLanguage;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        openaiTTSPrepare: _dija_gormic_service_kit_domain.Service<OpenaiTTSPrepare>;
+        preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+        updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$l, any>>;
+    executeValidateBoard: (context: {
+        getClientLanguage: Context.getClientLanguage;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTask: _dija_gormic_service_kit_domain.Service<GetTask>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        openaiValidateBoard: _dija_gormic_service_kit_domain.Service<OpenaiValidateBoard>;
+        preTTS: _dija_gormic_service_kit_domain.Service<PreTTS>;
+        updateTask: _dija_gormic_service_kit_domain.Service<UpdateTask>;
+    }) => (params: {
+        taskUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$m, any>>;
+    callTool: (context: {}, depends: {}) => (params: {
+        uid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$n, any>>;
+    createTaskGroup: (context: {
+        getUserId: Context.GetUserId;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+    }) => (params: {
+        conversationUid: string;
+        clientRequestId: TaskGroupE["data"]["clientRequestId"];
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$o, any>>;
+    updateTaskGroup: (context: {}, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+    }) => (params: {
+        uid: string;
+        status: TaskGroupE["data"]["status"];
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$p, any>>;
+    getTaskGroup: (context: {}, depends: {
+        tajData: {
+            getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
+        };
+    }) => (params: {
+        uid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$q, any>>;
+    cancelTaskGroup: (context: {}, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTaskGroup: _dija_gormic_service_kit_domain.Service<GetTaskGroup>;
+        cancelTask: _dija_gormic_service_kit_domain.Service<CancelTask>;
+        updateTaskGroup: _dija_gormic_service_kit_domain.Service<UpdateTaskGroup>;
+    }) => (params: {
+        uid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$r, any>>;
+    pauseTaskGroup: (context: {
+        pauseTaskGroup: Context.pauseTaskGroup;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTaskGroup: _dija_gormic_service_kit_domain.Service<GetTaskGroup>;
+        updateTaskGroup: _dija_gormic_service_kit_domain.Service<UpdateTaskGroup>;
+    }) => (params: {
+        uid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$s, any>>;
+    resumeTaskGroup: (context: {
+        resumeTaskGroup: Context.resumeTaskGroup;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        getTaskGroup: _dija_gormic_service_kit_domain.Service<GetTaskGroup>;
+        updateTaskGroup: _dija_gormic_service_kit_domain.Service<UpdateTaskGroup>;
+    }) => (params: {
+        uid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$t, any>>;
+    cancelCoversationTaskGroups: (context: {
+        getUserId: Context.GetUserId;
+    }, depends: {
+        tajData: {
+            getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        };
+        listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+        cancelTaskGroup: _dija_gormic_service_kit_domain.Service<CancelTaskGroup>;
+    }) => (params: {
+        conversationUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$u, any>>;
+    pauseCoversationTaskGroups: (context: {
+        getUserId: Context.GetUserId;
+    }, depends: {
+        tajData: {
+            getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        };
+        listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+        pauseTaskGroup: _dija_gormic_service_kit_domain.Service<PauseTaskGroup>;
+    }) => (params: {
+        conversationUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$v, any>>;
+    resumeCoversationTaskGroups: (context: {
+        getUserId: Context.GetUserId;
+    }, depends: {
+        tajData: {
+            getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        };
+        listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+        resumeTaskGroup: _dija_gormic_service_kit_domain.Service<ResumeTaskGroup>;
+    }) => (params: {
+        conversationUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$w, any>>;
+    listCoversationTaskGroups: (context: {
+        getUserId: Context.GetUserId;
+    }, depends: {
+        tajData: {
+            getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+        };
+    }) => (params: {
+        conversationUid: string;
+        query?: _dija_gormic_service_kit_domain.ListQueryParams<never, never>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$x, any>>;
+    compactForTextSteps: (context: {
+        getUserId: Context.GetUserId;
+        getPageImageBase64: Context.getPageImageBase64;
+        sendToClient: Context.sendToClient;
+    }, depends: {
+        tajData: {
+            getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            lock: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Lock>;
+        };
+        getBook: _dija_gormic_service_kit_domain.Service<GetBook>;
+        getPageAnalysis: _dija_gormic_service_kit_domain.Service<GetPageAnalysis>;
+        analyzePage: _dija_gormic_service_kit_domain.Service<AnalyzePage>;
+        listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+    }) => (params: {
+        conversationUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$y, any>>;
+    handleMsg: (context: {
+        getUserId: Context.GetUserId;
+        generateBookStructure: Context.generateBookStructure;
+        sendToClient: Context.sendToClient;
+    }, depends: {
+        tajData: {
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        createConversation: _dija_gormic_service_kit_domain.Service<CreateConversation>;
+        updateConversation: _dija_gormic_service_kit_domain.Service<UpdateConversation>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+        startTask: _dija_gormic_service_kit_domain.Service<StartTask>;
+        openaiSendText: _dija_gormic_service_kit_domain.Service<OpenaiSendText>;
+        getBook: _dija_gormic_service_kit_domain.Service<GetBook>;
+        getPageAnalysis: _dija_gormic_service_kit_domain.Service<GetPageAnalysis>;
+        analyzePage: _dija_gormic_service_kit_domain.Service<AnalyzePage>;
+        cancelCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<CancelCoversationTaskGroups>;
+        listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+        pauseCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<PauseCoversationTaskGroups>;
+        resumeCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ResumeCoversationTaskGroups>;
+        createTaskGroup: _dija_gormic_service_kit_domain.Service<CreateTaskGroup>;
+    }) => (params: {
+        conversationUid: string;
+        requestId: string;
+        language: ConversationE["data"]["language"];
+        bookUid?: MessageE["data"]["bookUid"];
+        pageIndex?: MessageE["data"]["pageIndex"];
+        stepId?: MessageE["data"]["stepUid"];
+        event?: "audio" | "json" | "cancel" | "pause" | "resume";
+        recordingId?: boolean;
+        preroll?: boolean;
+        data?: string;
+        ended?: boolean;
+        avgIsSpeech: number;
+        loudnessDbfs: number;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$z, any>>;
+    createConversation: (context: {
+        getUserId: Context.GetUserId;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+    }) => (params: {
+        language: ConversationE["data"]["language"];
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$A, any>>;
+    updateConversation: (context: {}, depends: {
+        tajData: {
+            updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+            getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
+            deleteItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.DeleteItem>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+        };
+    }) => (params: {
+        uid: string;
+        language?: ConversationE["data"]["language"];
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$B, any>>;
+    getConversationLite: (context: {
+        getUserId: Context.GetUserId;
+        getPageImageBase64: Context.getPageImageBase64;
+        sendToClient: Context.sendToClient;
+    }, depends: {
+        tajData: {
+            getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            lock: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Lock>;
+        };
+        getBook: _dija_gormic_service_kit_domain.Service<GetBook>;
+        getPageAnalysis: _dija_gormic_service_kit_domain.Service<GetPageAnalysis>;
+        analyzePage: _dija_gormic_service_kit_domain.Service<AnalyzePage>;
+        listCoversationTaskGroups: _dija_gormic_service_kit_domain.Service<ListCoversationTaskGroups>;
+    }) => (params: {
+        conversationUid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$C, any>>;
     createSection: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1597,7 +3607,7 @@ declare const servicesLib: {
         bookUid: string;
         sectionIndex: number;
         title: SectionE["data"]["title"];
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$D, any>>;
     createPageText: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1609,21 +3619,34 @@ declare const servicesLib: {
         bookUid: string;
         pageIndex: number;
         text: PageTextE["data"]["text"];
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$1, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$E, any>>;
     getBookText: (context: {}, depends: {
         tajData: {
             getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
         };
     }) => (params: {
         uid: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$2, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$F, any>>;
     getPageAnalysis: (context: {}, depends: {
         tajData: {
             getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
         };
     }) => (params: {
         uid: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$3, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$G, any>>;
+    createPageAnalysis: (context: {}, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+    }) => (params: {
+        bookUid: string;
+        pageIndex: number;
+        parts: PageAnalysisE["data"]["parts"];
+        words: PageAnalysisE["data"]["words"];
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$H, any>>;
     signUp: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1636,7 +3659,7 @@ declare const servicesLib: {
     }) => (params: {
         email: string;
         password: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$4, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$I, any>>;
     signIn: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1652,14 +3675,14 @@ declare const servicesLib: {
     }) => (params: {
         email: string;
         password: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$5, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$J, any>>;
     getUser: (context: {}, depends: {
         tajData: {
             getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
         };
     }) => (params: {
         uid: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$8, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$M, any>>;
     getUserByEmail: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1671,7 +3694,7 @@ declare const servicesLib: {
         getUser: _dija_gormic_service_kit_domain.Service<GetUser>;
     }) => (params: {
         email: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$6, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$K, any>>;
     getCurrentUser: (context: {
         getUserId: Context.GetUserId;
     }, depends: {
@@ -1679,7 +3702,7 @@ declare const servicesLib: {
             getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
         };
         getUser: _dija_gormic_service_kit_domain.Service<GetUser>;
-    }) => (params: {}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$7, any>>;
+    }) => (params: {}, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$L, any>>;
     refreshAccessToken: (context: {
         getUserId: Context.GetUserId;
     }, depends: {
@@ -1696,7 +3719,7 @@ declare const servicesLib: {
         };
     }) => (params: {
         refreshToken: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$9, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$N, any>>;
     sendResetPassword: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1708,7 +3731,7 @@ declare const servicesLib: {
         getUserByEmail: _dija_gormic_service_kit_domain.Service<GetUserByEmail>;
     }) => (params: {
         email: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$a, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$O, any>>;
     sendEmailOtp: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1721,7 +3744,7 @@ declare const servicesLib: {
         getUserByEmail: _dija_gormic_service_kit_domain.Service<GetUserByEmail>;
     }) => (params: {
         email: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$b, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$P, any>>;
     verifyEmailOtp: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1736,7 +3759,7 @@ declare const servicesLib: {
         email: string;
         token: string;
         otp: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$c, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$Q, any>>;
     resetPassword: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1750,7 +3773,7 @@ declare const servicesLib: {
     }) => (params: {
         token: string;
         newPassword: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$d, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$R, any>>;
     changePassword: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1764,7 +3787,7 @@ declare const servicesLib: {
     }) => (params: {
         oldPassword: string;
         newPassword: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$e, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$S, any>>;
     updateUser: (context: {}, depends: {
         tajData: {
             updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
@@ -1779,7 +3802,7 @@ declare const servicesLib: {
         gender?: UserE["data"]["gender"];
         birthdate?: UserE["data"]["birthdate"];
         preferedLang?: UserE["data"]["preferedLang"];
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$g, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$U, any>>;
     updateMyInfo: (context: {
         getUserId: Context.GetUserId;
     }, depends: {
@@ -1796,7 +3819,14 @@ declare const servicesLib: {
         gender?: UserE["data"]["gender"];
         birthdate?: UserE["data"]["birthdate"];
         preferedLang?: UserE["data"]["preferedLang"];
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$f, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$T, any>>;
+    listUsers: (context: {}, depends: {
+        tajData: {
+            getItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItems>;
+        };
+    }) => (params: {
+        query?: _dija_gormic_service_kit_domain.ListQueryParams<never, never>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$V, any>>;
     createUpload: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1811,14 +3841,14 @@ declare const servicesLib: {
         height: PageE["data"]["height"];
         fileSize: PageE["data"]["fileSize"];
         pageNumber?: PageE["data"]["pageNumber"];
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$h, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$W, any>>;
     getUpload: (context: {}, depends: {
         tajData: {
             getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
         };
     }) => (params: {
         uid: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$i, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$X, any>>;
     uploadPdf: (context: {
         appendFile: Context.AppendFile;
         pdfToImages: Context.PdfToImages;
@@ -1838,7 +3868,7 @@ declare const servicesLib: {
         chunkIndex?: number;
         chunk?: any;
         completed?: boolean;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$j, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$Y, any>>;
     processPdf: (context: {
         pdfToImages: Context.PdfToImages;
     }, depends: {
@@ -1853,7 +3883,7 @@ declare const servicesLib: {
     }) => (params: {
         bookUid: string;
         uploadUid: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$k, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$Z, any>>;
     onPdfParsed: (context: {
         pdfToImages: Context.PdfToImages;
     }, depends: {
@@ -1870,7 +3900,7 @@ declare const servicesLib: {
         uploadUid: string;
         title?: string;
         pagesCount: number;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$l, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$_, any>>;
     onPdfPageParsed: (context: {
         pdfToImages: Context.PdfToImages;
         extractText: Context.extractText;
@@ -1891,7 +3921,7 @@ declare const servicesLib: {
         width: number;
         height: number;
         fileSize: number;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$m, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$$, any>>;
     onPdfParseEnd: (context: {
         pdfToImages: Context.PdfToImages;
         extractText: Context.extractText;
@@ -1911,7 +3941,27 @@ declare const servicesLib: {
         };
     }) => (params: {
         uploadUid: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$n, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$10, any>>;
+    uploadImageToConversation: (context: {
+        appendFile: Context.AppendFile;
+    }, depends: {
+        tajData: {
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        createTaskGroup: _dija_gormic_service_kit_domain.Service<CreateTaskGroup>;
+        createTask: _dija_gormic_service_kit_domain.Service<CreateTask>;
+    }) => (params: {
+        conversationUid: string;
+        fileId: string;
+        fileName: string;
+        fileSize: number;
+        chunkIndex?: number;
+        chunk?: any;
+        completed?: boolean;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$11, any>>;
     createPage: (context: {}, depends: {
         tajData: {
             getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
@@ -1927,7 +3977,7 @@ declare const servicesLib: {
         fileSize: PageE["data"]["fileSize"];
         pageNumber?: PageE["data"]["pageNumber"];
         sectionId?: PageE["data"]["sectionId"];
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$o, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$12, any>>;
     updatePage: (context: {}, depends: {
         tajData: {
             updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
@@ -1944,7 +3994,21 @@ declare const servicesLib: {
         pageNumber?: PageE["data"]["pageNumber"];
         sectionId?: PageE["data"]["sectionId"];
         textExtracted?: PageE["data"]["textExtracted"];
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$p, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$13, any>>;
+    analyzePage: (context: {
+        analyzePage: Context.analyzePage;
+    }, depends: {
+        tajData: {
+            getLinkedItems: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinkedItems>;
+            getLinks: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetLinks>;
+            createItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.CreateItem>;
+            link: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.Link>;
+        };
+        createPageAnalysis: _dija_gormic_service_kit_domain.Service<CreatePageAnalysis>;
+        getBook: _dija_gormic_service_kit_domain.Service<GetBook>;
+    }) => (params: {
+        uid: string;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$14, any>>;
     createBook: (context: {
         getUserId: Context.GetUserId;
     }, depends: {
@@ -1958,7 +4022,7 @@ declare const servicesLib: {
         id?: string;
         title?: BookE["data"]["title"];
         language?: BookE["data"]["language"];
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$q, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$15, any>>;
     updateBook: (context: {}, depends: {
         tajData: {
             updateItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.UpdateItem>;
@@ -1972,14 +4036,14 @@ declare const servicesLib: {
         title?: BookE["data"]["title"];
         language?: BookE["data"]["language"];
         pagesCount?: BookE["data"]["pagesCount"];
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$r, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$16, any>>;
     getBook: (context: {}, depends: {
         tajData: {
             getItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.GetItem>;
         };
     }) => (params: {
         uid: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$s, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$17, any>>;
     listBooks: (context: {
         getUserId: Context.GetUserId;
     }, depends: {
@@ -1990,14 +4054,14 @@ declare const servicesLib: {
     }) => (params: {
         userUid: string;
         query?: _dija_gormic_service_kit_domain.ListQueryParams<never, never>;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$v, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$1a, any>>;
     deleteBook: (context: {}, depends: {
         tajData: {
             deleteItem: _dija_gormic_service_kit_domain.Service<_dija_taj_data_services.DeleteItem>;
         };
     }) => (params: {
         uid: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$t, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$18, any>>;
     listMyBooks: (context: {
         getUserId: Context.GetUserId;
     }, depends: {
@@ -2008,7 +4072,7 @@ declare const servicesLib: {
         listBooks: _dija_gormic_service_kit_domain.Service<ListBooks>;
     }) => (params: {
         query?: _dija_gormic_service_kit_domain.ListQueryParams<never, never>;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$u, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$19, any>>;
     analyzeBook: (context: {
         getUserId: Context.GetUserId;
         generateBookStructure: Context.generateBookStructure;
@@ -2025,7 +4089,7 @@ declare const servicesLib: {
         };
     }) => (params: {
         uid: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$w, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$1b, any>>;
     archiveBook: (context: {
         getClientIamId: Context.GetClientIamId;
         getClientUserId: Context.GetClientUserId;
@@ -2038,7 +4102,7 @@ declare const servicesLib: {
         };
     }) => (params: {
         uid: string;
-    }, scope: any) => Promise<ServiceResult<Def$x>>;
+    }, scope: any) => Promise<ServiceResult<Def$1c>>;
     restoreBook: (context: {}, depends: {
         tajData: {
             getItem: Service<_dija_taj_data_services.GetItem>;
@@ -2046,7 +4110,7 @@ declare const servicesLib: {
         };
     }) => (params: {
         uid: string;
-    }, scope: any) => Promise<ServiceResult<Def$y>>;
+    }, scope: any) => Promise<ServiceResult<Def$1d>>;
     deleteMyBook: (context: {
         getUserId: Context.GetUserId;
     }, depends: {
@@ -2057,8 +4121,8 @@ declare const servicesLib: {
         getBook: _dija_gormic_service_kit_domain.Service<GetBook>;
     }) => (params: {
         uid: string;
-    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$z, any>>;
+    }, scope: any) => Promise<_gormic_utils_public.ServiceResult<Def$1e, any>>;
 };
 
-export { APP_ID, BookChildsKeys, BookLinkKeys, Context, DATA_SCHEMA, DEPLOYMENT_ID, HOST, HTTPError, PK, PageId, STATUS_PORTION, ServiceErrorImpl, UID_SCHEMA, UserChildsKeys, UserLinkKeys, analyzeBook, archiveBook, changePassword, checkMissingParams, createBaseService, createBook, createCacheRepo, createPage, createPageText, createSection, createUpload, deleteBook, deleteMyBook, embeddedUuidV7, getBook, getBookText, getCurrentUser, getPageAnalysis, getUpload, getUser, getUserByEmail, initServices, isServiceError, isServiceResult, listBooks, listMyBooks, mapBook, mapPage, mapPageAnalysis, mapUser, onPdfPageParsed, onPdfParseEnd, onPdfParsed, processPdf, refreshAccessToken, resetPassword, restoreBook, sendEmailOtp, sendResetPassword, servicesLib, signIn, signUp, updateBook, updateMyInfo, updatePage, updateUser, uploadPdf, verifyEmailOtp };
-export type { AddLog, AnalyzeBook, ArchiveBook, BookE, BookM, CacheRule, ChangePassword, CreateBook, CreatePage, CreatePageText, CreateSection, CreateUpload, DeleteBook, DeleteMyBook, Errors, ExcelBook, ExcelBorderStyle, ExcelCell, ExcelColumn, ExcelRow, ExcelWorksheet, Fetch, GetBook, GetBookText, GetCurrentUser, GetPageAnalysis, GetUpload, GetUser, GetUserByEmail, ListBooks, ListMyBooks, ListQueryParams, ListQueryResult, LongDivisionContent, LongMultiplicationContent, OnPdfPageParsed, OnPdfParseEnd, PageAnalysisE, PageAnalysisM, PageE, PageM, ProcessPdf, RefreshAccessToken, ResetPassword, RestoreBook, Scope, SendEmailOtp, SendResetPassword, Service, ServiceDef, ServiceError, ServiceOptions, ServiceResult, ServiceResultOld, ServiceWarning, ServicesT, SignIn, SignUp, UpdateBook, UpdateMyInfo, UpdatePage, UpdateUser, UploadPdf, UserE, UserM, VerifyEmailOtp };
+export { APP_ID, BookChildsKeys, BookLinkKeys, Context, DATA_SCHEMA, DEPLOYMENT_ID, HOST, HTTPError, MAX_INPUT_TOKENS, PK, PageId, STATUS_PORTION, STT_MODE, ServiceErrorImpl, UID_SCHEMA, UserChildsKeys, UserLinkKeys, analyzeBook, analyzePage, archiveBook, callTool, cancelCoversationTaskGroups, cancelTask, cancelTaskGroup, changePassword, checkCompletion, checkMissingParams, compactForTextSteps, createBaseService, createBook, createCacheRepo, createConversation, createPage, createPageAnalysis, createPageText, createSection, createTask, createTaskGroup, createUpload, createUsage, deleteBook, deleteMyBook, embeddedUuidV7, executePreTTS, executeProcessTextStep, executeSendText, executeTTS, executeTTSPrepare, executeValidateBoard, geminiSendText, getBook, getBookText, getConversationLite, getCurrentUser, getPageAnalysis, getTask, getTaskGroup, getUpload, getUser, getUserByEmail, grokTTS, handleMsg, initServices, isServiceError, isServiceResult, listBooks, listCoversationTaskGroups, listMyBooks, listUsers, mapBook, mapPage, mapPageAnalysis, mapUser, onPdfPageParsed, onPdfParseEnd, onPdfParsed, onTTSChunk, onTextStepChunk, openaiSendText, openaiTTSPrepare, openaiValidateBoard, pauseCoversationTaskGroups, pauseTaskGroup, preTTS, processPdf, refreshAccessToken, resetPassword, restoreBook, resumeCoversationTaskGroups, resumeTaskGroup, sendEmailOtp, sendResetPassword, servicesLib, signIn, signUp, startTask, updateBook, updateConversation, updateMyInfo, updatePage, updateTask, updateTaskGroup, updateUser, uploadImageToConversation, uploadPdf, verifyEmailOtp };
+export type { AddLog, AnalyzeBook, AnalyzePage, ArchiveBook, BookE, BookM, CacheRule, CallTool, CancelCoversationTaskGroups, CancelTask, CancelTaskGroup, ChangePassword, CheckCompletion, CompactForTextSteps, CreateBook, CreateConversation, CreatePage, CreatePageAnalysis, CreatePageText, CreateSection, CreateTask, CreateTaskGroup, CreateUpload, CreateUsage, DeleteBook, DeleteMyBook, Errors, ExcelBook, ExcelBorderStyle, ExcelCell, ExcelColumn, ExcelRow, ExcelWorksheet, ExecutePreTTS, ExecuteProcessTextStep, ExecuteSendText, ExecuteTTS, ExecuteTTSPrepare, ExecuteValidateBoard, Fetch, GeminiSendText, GetBook, GetBookText, GetConversationLite, GetCurrentUser, GetPageAnalysis, GetTask, GetTaskGroup, GetUpload, GetUser, GetUserByEmail, GrokTTS, HandleMsg, ListBooks, ListCoversationTaskGroups, ListMyBooks, ListQueryParams, ListQueryResult, ListUsers, LongDivisionContent, LongMultiplicationContent, OnPdfPageParsed, OnPdfParseEnd, OnTTSChunk, OnTextStepChunk, OpenaiSendText, OpenaiTTSPrepare, OpenaiValidateBoard, PageAnalysisE, PageAnalysisM, PageE, PageM, PauseCoversationTaskGroups, PauseTaskGroup, PreTTS, ProcessPdf, ProcessTextStep, RefreshAccessToken, ResetPassword, RestoreBook, ResumeCoversationTaskGroups, ResumeTaskGroup, Scope, SendEmailOtp, SendResetPassword, Service, ServiceDef, ServiceError, ServiceOptions, ServiceResult, ServiceResultOld, ServiceWarning, ServicesT, SignIn, SignUp, StartTask, UpdateBook, UpdateConversation, UpdateMyInfo, UpdatePage, UpdateTask, UpdateTaskGroup, UpdateUser, UploadImageToConversation, UploadPdf, UserE, UserM, VerifyEmailOtp };

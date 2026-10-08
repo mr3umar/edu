@@ -51,11 +51,13 @@
     "rate-limiter-flexible": "^11.2.0",
     "rollup-plugin-dts": "^6.5.1",
     "sharp": "^0.35.4",
-    "stream-json": "^3.6.0",
+    "stream-chain": "^4.2.6",
+    "stream-json": "^3.7.0",
     "taj-data-server": "*",
     "taj-data-services": "*",
     "to-words": "^7.1.0",
     "wav": "^1.0.2",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "onnxruntime-common": "1.23.2"
   }
 }

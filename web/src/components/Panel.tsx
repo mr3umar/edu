@@ -4,7 +4,9 @@ import './Panel.css';
 import { useTutor } from '../api/tutor/hook';
 import { useDocumentLang } from '../lib/useDocumentLang';
 import { textDirection } from '../lib/textDirection';
+import { htmlText, inlineHtml } from '../lib/inlineHtml';
 import { useAutoHeightTransition } from '../lib/useAutoHeightTransition';
+import { useKeyboardInset } from '../lib/useKeyboardInset';
 import { usePanelLayout } from '../lib/usePanelLayout';
 import BoardView from './board/BoardView';
 import CaptionText from './CaptionText';
@@ -13,8 +15,13 @@ import { useApp } from '../App';
 import type { Message, MessageOptionsData } from '../types/book';
 import { onLaserShown, sendText } from '../api/books';
 import { fitFrameToBox, fitToBox } from '../lib/fitToBox';
-import { Mic, Pause, Play, RotateCcw, RotateCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, History, Mic, RotateCcw, RotateCw, WifiOff } from 'lucide-react';
+import { requireConnection, useSocketConnected } from '../lib/connection';
 import { SpeedometerIcon } from './icons/SpeedIcons';
+import AiDotMatrix from './AiDotMatrix';
+import AiCharacter from './AiCharacter';
+import { AI_ICON_STYLE } from '../config/aiIcon';
+import ConversationHistory, { type HistoryStep } from './ConversationHistory';
 
 // Sliding between the top and bottom of the screen.
 const PANEL_SLIDE_MS = 350;
@@ -27,29 +34,6 @@ const LASER_CHECKS = 10;
 // A resize finishing this soon after the user opened or minimized the panel is
 // theirs (it fades out, resizes and fades in, well within this).
 const USER_RESIZE_MS = 1500;
-
-// A wave filling the bottom of the AI icon, two wave-lengths wide (80 units,
-// one wave per 40) so sliding it left by one loops seamlessly.
-const wavePath = (baseline: number, amplitude: number) =>
-  `M0 ${baseline} Q10 ${baseline - amplitude} 20 ${baseline} T40 ${baseline} T60 ${baseline} T80 ${baseline} V40 H0 Z`;
-
-// Layered grey waves, lightest at the bottom, drifting inside the AI icon while it's idle
-// (ready, listening).
-function AiWaves() {
-  return (
-    <span className="ai-waves" aria-hidden="true">
-      <svg className="ai-wave ai-wave-back" viewBox="0 0 80 40" preserveAspectRatio="none">
-        <path d={wavePath(16, 4)} />
-      </svg>
-      <svg className="ai-wave ai-wave-mid" viewBox="0 0 80 40" preserveAspectRatio="none">
-        <path d={wavePath(20, 3)} />
-      </svg>
-      <svg className="ai-wave ai-wave-front" viewBox="0 0 80 40" preserveAspectRatio="none">
-        <path d={wavePath(24, 3.5)} />
-      </svg>
-    </span>
-  );
-}
 
 // How often, and how many times, to re-check a board frame's fonts and images
 // while they load (about 6 seconds in all).
@@ -116,16 +100,22 @@ const Panel = forwardRef<
 
     const [draft, setDraft] = useState('');
 
+    // Offline, nothing can be asked: the input is disabled and the AI icon
+    // says so (tapping it explains why).
+    const connected = useSocketConnected()
+    const iconStatus = connected ? aiStatus : "offline"
+
     // The AI icon acts only while there's an answer: cancel it while it's
     // coming, pause it while it plays, resume it while paused.
     const aiAction =
-      aiStatus === "thinking" ? cancelRequest
+      !connected ? () => { requireConnection() }
+      : aiStatus === "thinking" ? cancelRequest
       : aiStatus === "speaking" ? pauseRequest
       : aiStatus === "paused" ? resumeRequest
       : undefined
     const aiLabel = isEnglish
-      ? { ready: 'AI tutor', listening: 'AI tutor, listening', thinking: 'Stop answer', speaking: 'Pause', paused: 'Resume' }[aiStatus]
-      : { ready: 'المعلم الذكي', listening: 'المعلم الذكي يستمع', thinking: 'إيقاف الإجابة', speaking: 'إيقاف مؤقت', paused: 'استئناف' }[aiStatus]
+      ? { ready: 'AI tutor', listening: 'AI tutor, listening', thinking: 'Stop answer', speaking: 'Pause', paused: 'Resume', offline: 'AI tutor offline, reconnecting' }[iconStatus]
+      : { ready: 'المعلم الذكي', listening: 'المعلم الذكي يستمع', thinking: 'إيقاف الإجابة', speaking: 'إيقاف مؤقت', paused: 'استئناف', offline: 'المعلم الذكي غير متصل، جارٍ إعادة الاتصال' }[iconStatus]
     const micLabel = micStatus
       ? (isEnglish ? 'Turn mic off' : 'إيقاف الميكروفون')
       : (isEnglish ? 'Turn mic on' : 'تشغيل الميكروفون')
@@ -154,10 +144,37 @@ const Panel = forwardRef<
     // laser check after a resize, below).
     const userResizedAt = useRef(-Infinity);
 
-    // A minimized board isn't active: its step stops going out with messages.
+    // What the panel shows: the live tutor (caption, options and board), the
+    // conversation's history in their place, or a step picked from it.
+    const [view, setView] = useState<'live' | 'history' | 'step'>('live');
+    const [historyStep, setHistoryStep] = useState<HistoryStep>();
+    // Bumped each time the history opens, so it loads the latest messages.
+    const [historyLoadKey, setHistoryLoadKey] = useState(0);
+
+    const toggleHistory = () => {
+      userResizedAt.current = performance.now()
+      if (view === 'live') {
+        setHistoryLoadKey(key => key + 1)
+        setView('history')
+      } else {
+        setView('live')
+      }
+    }
+    const openHistoryStep = (step: HistoryStep) => {
+      userResizedAt.current = performance.now()
+      setHistoryStep(step)
+      setView('step')
+    }
+    const backToHistory = () => {
+      userResizedAt.current = performance.now()
+      setView('history')
+    }
+
+    // A minimized board isn't active, nor is one the history is showing in
+    // place of: its step stops going out with messages.
     useEffect(() => {
-      setIsBoardHidden(isMinimized)
-    }, [isMinimized])
+      setIsBoardHidden(isMinimized || view !== 'live')
+    }, [isMinimized, view])
 
     useEffect(() => {
       if (visibleCount > 0) {
@@ -203,15 +220,32 @@ const Panel = forwardRef<
     // What should show; `shown` is what's rendered, which follows it through
     // the animation (what leaves fades out, the panel resizes, what arrives
     // fades in).
+    const historyRef = useRef<HTMLDivElement>(null);
+    const showingStep = view === 'step' && !!historyStep;
     const { shown, animating } = usePanelLayout(
-      {
-        main: showMain,
-        board: isBoardOpen,
-        controls: showPlayback,
-        open: !isMinimized && (showMain || isBoardOpen),
-      },
-      { panel: panelRef, content: contentAreaRef, main: mainRef, board: boardColumnRef, controls: controlsRef },
+      view === 'history'
+        ? { main: false, board: false, controls: false, history: true, open: true }
+        : showingStep
+          ? { main: !!historyStep.text, board: !!historyStep.board, controls: false, history: false, open: true }
+          : {
+            main: showMain,
+            board: isBoardOpen,
+            controls: showPlayback,
+            history: false,
+            open: !isMinimized && (showMain || isBoardOpen),
+          },
+      { panel: panelRef, content: contentAreaRef, main: mainRef, board: boardColumnRef, controls: controlsRef, history: historyRef },
     );
+
+    // Whose content the main area and board hold: the step picked from the
+    // history while it shows, and still while they fade out on the way back
+    // to the history (the step stays until the live tutor's comes back).
+    const stepSource = useRef(false);
+    if (showingStep) stepSource.current = true;
+    else if (view === 'live') stepSource.current = false;
+    const shownStep = stepSource.current ? historyStep : undefined;
+    const board = shownStep ? shownStep.board : boardContent;
+    const boardDir = shownStep ? (shownStep.lang === 'en' ? 'ltr' : 'rtl') : (isEnglish ? 'ltr' : 'rtl');
     const shownCount = shown.open ? Number(shown.main) + Number(shown.board) : 0
 
     // The main area keeps its last caption/options while it fades out,
@@ -228,7 +262,7 @@ const Panel = forwardRef<
     useAutoHeightTransition(
       contentAreaRef,
       !animating && shown.open && shown.main && !shown.board,
-      [captionText, showOptionsMessage, messages.length, aiTasks],
+      [captionText, showOptionsMessage, messages.length, aiTasks, shownStep],
     );
     const contentRef = useRef<HTMLDivElement>(null);
 
@@ -295,10 +329,13 @@ const Panel = forwardRef<
         observer.disconnect();
         content.removeEventListener('load', onLoad, true);
       };
-    }, [boardContent]);
+    }, [board]);
 
 
     const [toolLocation, setToolLocation] = useState<'up' | 'down'>('down');
+    // On a tablet, the panel rises above the on-screen keyboard while it's
+    // open (at the bottom of the screen; at the top it isn't in the way).
+    const keyboardInset = useKeyboardInset();
     const toolLocationRef = useRef(toolLocation);
     const slide = useRef<Animation | undefined>(undefined);
 
@@ -383,7 +420,7 @@ const Panel = forwardRef<
 
 
     return (
-      <div ref={panelRef} className={`panel panel-content-${shownCount} ${toolLocation} ${shown.open ? '' : 'minimized'} ${shown.open && shown.controls ? 'has-playback' : ''} ${shown.open && shown.main && !shown.board ? 'main-only' : ''}`}>
+      <div ref={panelRef} style={{ '--keyboard-inset': `${keyboardInset}px` } as React.CSSProperties} className={`panel panel-content-${shownCount} ${toolLocation} ${shown.open ? '' : 'minimized'} ${shown.open && shown.controls ? 'has-playback' : ''} ${shown.open && shown.main && !shown.board ? 'main-only' : ''} ${shown.open && shown.history ? 'history-open' : ''} ${shownStep && shown.open && !shown.history ? 'history-step' : ''}`}>
         <div ref={contentAreaRef} className={`panel-content`}>
 
           <div
@@ -391,22 +428,39 @@ const Panel = forwardRef<
             className={`panel-content-main ${shown.main ? "visible" : ""
               }`}
           >
-            {main.showCaption && <CaptionText text={main.captionText!} />}
+            {/* A step picked from the history: what the tutor said then. */}
+            {shownStep && (
+              <div className='panel-caption' dir={shownStep.lang === 'en' ? 'ltr' : 'rtl'}>
+                {shownStep.text}
+              </div>
+            )}
 
-            {main.showOptionsMessage && main.lastMsg && (
+            {!shownStep && main.showCaption && <CaptionText text={main.captionText!} />}
+
+            {!shownStep && main.showOptionsMessage && main.lastMsg && (
 
               // Keyed by the message, so each new set of options animates in.
               <div className='panel-message' key={main.optionsKey}>
                 {isEnglish ? 'Choose' : 'اختر'}:
-                {main.lastMsg.data.options.map(opt => (
-                  <div className='pannel-message-option' onClick={() => sendText(opt.text)}>{opt.text}</div>
+                {/* Options can be simple HTML (MathML, simple SVG); each shows on
+                    one line, cut with an ellipsis if too long (in full on hover). */}
+                {main.lastMsg.data.options.map((opt, i) => (
+                  <button
+                    key={i}
+                    type='button'
+                    dir='auto'
+                    className='pannel-message-option'
+                    onClick={() => { if (requireConnection()) sendText(opt.text) }}
+                    title={htmlText(opt.text)}
+                    dangerouslySetInnerHTML={{ __html: inlineHtml(opt.text) }}
+                  />
                 ))}
               </div>
             )}
 
             {/* What the AI is working on in the background, under the options. */}
             <AiTasks
-              tasks={main.aiTasks}
+              tasks={shownStep ? [] : main.aiTasks}
               lang={isEnglish ? 'en' : 'ar'}
               onStop={stopAiTask}
               onDismiss={dismissAiTask}
@@ -421,7 +475,7 @@ const Panel = forwardRef<
             >
 
                 <div ref={contentRef} className='panel-content-whiteboard-content'>
-                  <BoardView board={boardContent} dir={isEnglish ? 'ltr' : 'rtl'} />
+                  <BoardView board={board} dir={boardDir} />
                 </div>
             </div>
 
@@ -454,7 +508,32 @@ const Panel = forwardRef<
             )}
           </div>
 
+          {/* The conversation so far, in place of the main area and board. */}
+          <div ref={historyRef} className={`panel-history ${shown.history ? 'visible' : ''}`} aria-hidden={!shown.history}>
+            <ConversationHistory
+              loadKey={historyLoadKey}
+              lang={isEnglish ? 'en' : 'ar'}
+              selectedKey={historyStep?.key}
+              onSelect={openHistoryStep}
+            />
+          </div>
+
         </div>
+
+        {/* Over the step picked from the history (no extra row, so the panel
+            keeps its height): back to the history. */}
+        {showingStep && shown.open && !shown.history && (
+          <button
+            type='button'
+            className='panel-history-back'
+            onClick={backToHistory}
+            aria-label={isEnglish ? 'Back to conversation' : 'العودة إلى المحادثة'}
+            title={isEnglish ? 'Back to conversation' : 'العودة إلى المحادثة'}
+          >
+            {isEnglish ? <ArrowLeft strokeWidth={2.25} /> : <ArrowRight strokeWidth={2.25} />}
+          </button>
+        )}
+
         <div className='tools-bar'>
 
 
@@ -462,7 +541,7 @@ const Panel = forwardRef<
 
 
             <button
-              className={"ai-control " + aiStatus}
+              className={"ai-control " + iconStatus}
               onClick={aiAction}
               aria-disabled={!aiAction}
               aria-label={aiLabel}
@@ -470,24 +549,15 @@ const Panel = forwardRef<
             >
               <span className="ai-ring"></span>
 
-              {aiStatus == "thinking" && (
+              {iconStatus == "offline" && (
                 <span className="ai-core">
-                  <span className="stop-square"></span>
+                  <WifiOff className="ai-core-icon" strokeWidth={2.25} />
                 </span>
               )}
-              {aiStatus == "speaking" && (
-                <span className="ai-core">
-                  <Pause className="ai-core-icon" fill="currentColor" strokeWidth={0} />
-                </span>
-              )}
-              {aiStatus == "paused" && (
-                <span className="ai-core">
-                  <Play className="ai-core-icon ai-play-icon" fill="currentColor" strokeWidth={0} />
-                </span>
-              )}
-              {(aiStatus == "ready" || aiStatus == "listening") && (
-                <span className="ai-core">
-                  <AiWaves />
+              {iconStatus != "offline" && (
+                <span className={`ai-core ${AI_ICON_STYLE}`}>
+                  {AI_ICON_STYLE === 'dot-matrix' && <AiDotMatrix status={iconStatus} />}
+                  {AI_ICON_STYLE === 'character' && <AiCharacter status={iconStatus} rtl={!isEnglish} />}
                 </span>
               )}
             </button>
@@ -520,15 +590,28 @@ const Panel = forwardRef<
           </div>
 
 
-          <div>
+          {/* On its own row under the buttons, across the whole panel. */}
+          <div className='tools-input'>
             {/* A label, so a click or tap anywhere on the pill focuses the input. */}
-            <label className="input-wrapper">
+            <label className={`input-wrapper ${connected ? '' : 'disabled'}`}>
               <input
                   type="text"
                   dir={textDirection(draft)}
                   value={draft}
+                  disabled={!connected}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder={isEnglish ? 'Write..' : 'اكتب..'}
+                  // iOS scrolls the page up to show an input as it's tapped;
+                  // focus it without that (the panel rises above the
+                  // keyboard instead).
+                  onTouchEnd={(e) => {
+                    const input = e.currentTarget
+                    if (document.activeElement === input) return
+                    e.preventDefault()
+                    input.focus({ preventScroll: true })
+                  }}
+                  placeholder={connected
+                    ? (isEnglish ? 'Write..' : 'اكتب..')
+                    : (isEnglish ? 'Offline — reconnecting..' : 'غير متصل — جارٍ إعادة الاتصال..')}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       const value = draft.trim();
@@ -592,20 +675,26 @@ const Panel = forwardRef<
 </svg>
 </button>
 
-            {visibleCount > 0 && (
+            {(visibleCount > 0 || view !== 'live') && (
             <button
                 className="control-btn toggle"
-                title={isMinimized ? "Restore" : "Minimize"}
-                aria-label={isMinimized ? "Restore" : "Minimize"}
-                aria-pressed={!isMinimized}
+                title={isMinimized && view === 'live' ? "Restore" : "Minimize"}
+                aria-label={isMinimized && view === 'live' ? "Restore" : "Minimize"}
+                aria-pressed={!isMinimized || view !== 'live'}
 
                 onClick={() => {
                   userResizedAt.current = performance.now()
-                  setIsMinimized(!isMinimized)
+                  // Minimizing from the history goes back to the live tutor.
+                  if (view !== 'live') {
+                    setView('live')
+                    setIsMinimized(true)
+                  } else {
+                    setIsMinimized(!isMinimized)
+                  }
                 }}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  {isMinimized ? (
+                  {isMinimized && view === 'live' ? (
                     <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
 
                   ) : (
@@ -614,6 +703,18 @@ const Panel = forwardRef<
                 </svg>
               </button>
               )}
+
+            {/* At the panel's edge: the conversation's history in place of
+                the live tutor, and back. */}
+            <button
+              className={`control-btn history-btn ${view !== 'live' ? 'on' : ''}`}
+              onClick={toggleHistory}
+              aria-pressed={view !== 'live'}
+              aria-label={isEnglish ? 'Conversation history' : 'سجل المحادثة'}
+              title={isEnglish ? 'Conversation history' : 'سجل المحادثة'}
+            >
+              <History strokeWidth={2} />
+            </button>
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@ import { AccessKeyData, GetDeployment, GetInstance } from '@dija/gormic-cloud-pu
 import { CheckPermissionForUser } from '@dija/gormic-iam-public';
 import { Service, isServiceError } from '@dija/gormic-service-kit-domain';
 import * as http from 'http';
+import * as https from 'https';
 import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
 import { CryptoUtil } from './crypto.js';
 import { getRequestBody } from './get-request-body.js';
@@ -73,13 +74,14 @@ export const createServer = (
         serviceName: string,
         scope: any,
     ) => Promise<any>,
+    options?: https.ServerOptions,
 ) => {
     const log = (message: any) => {
         const date = new Date().toISOString();
         console.log(`[${date}] ${message}`);
     };
 
-    const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    const server =https.createServer(options ?? {}, async (req: http.IncomingMessage, res: http.ServerResponse) => {
         const url = req.url as string;
         const contentType = req.headers['content-type'] || '';
 

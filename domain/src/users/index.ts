@@ -11,3 +11,4 @@ export * from './reset-password/index.js';
 export * from './change-my-password/index.js';
 export * from './update/index.js';
 export * from './update-my-info/index.js';
+export * from './list/index.js';

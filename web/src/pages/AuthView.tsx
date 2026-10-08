@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, KeyboardEvent, ClipboardEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import type { AuthRedirectState } from '../components/RequireAuth';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Field, inputClass } from '../components/ui/field';
@@ -94,7 +95,10 @@ export default function AuthView() {
     return () => clearInterval(timer);
   }, [step, resendCooldown]);
 
-  const finishAuth = () => navigate('/');
+  // Back to the page that sent them to sign in (see RequireAuth), or home.
+  const location = useLocation();
+  const from = (location.state as AuthRedirectState | null)?.from;
+  const finishAuth = () => navigate(from ?? '/', { replace: true });
 
   // Email sign-in and sign-up only: send the OTP and route to verification
   // when the signIn response reports data.emailVerified === false.

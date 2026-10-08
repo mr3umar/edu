@@ -13,7 +13,9 @@ import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { Mic } from './types/book';
 import type { PlaybackState } from './audioStreamPlayer';
 import { TutorProvider } from './api/tutor/provider';
+import { MessageDialogHost } from './components/ui/message-dialog';
 import Panel from './components/Panel';
+import RequireAuth from './components/RequireAuth';
 
 type AppContextType = {
   mic: Mic;
@@ -83,15 +85,20 @@ export default function App() {
     <TutorProvider>
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<HomeView />} />
         <Route path="/auth" element={<AuthView />} />
         <Route path="/reset-password" element={<ResetPasswordView />} />
-        <Route path="/profile" element={<ProfileView />} />
-        <Route path="/profile/edit" element={<ProfileEditView />} />
-        <Route path="/profile/change-password" element={<ChangePasswordView />} />
-        <Route path="/book/:bookId/:page?" element={<BookReaderView />} />
+        {/* Signed in only: otherwise to /auth, and back here after. */}
+        <Route element={<RequireAuth />}>
+          <Route path="/" element={<HomeView />} />
+          <Route path="/profile" element={<ProfileView />} />
+          <Route path="/profile/edit" element={<ProfileEditView />} />
+          <Route path="/profile/change-password" element={<ChangePasswordView />} />
+          <Route path="/book/:bookId/:page?" element={<BookReaderView />} />
+        </Route>
       </Routes>
       <TutorPanel />
+      {/* The app's message dialogs (see showMessage). */}
+      <MessageDialogHost />
     </BrowserRouter>
     </TutorProvider>
   );

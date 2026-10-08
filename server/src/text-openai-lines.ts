@@ -28,12 +28,12 @@ interface PendingToolCall {
     argsBuffer: string;
 }
 
-const DocumentTeachingSchema = z.object({
+export const DocumentTeachingSchema = z.object({
     steps: z.array(
         z.object({
             stepId: z.string().describe(`random unique id for this step.`),
             lang: z.string().describe(`language of the content of textToSay in ISO 639-1 code (e.g. 'ar', 'en', 'fr').`),
-            textToSay: z.string().describe('text only ready for text-to-speach, you can use only bbcode [option]...[/option].'),
+            textToSay: z.string().describe('text only ready for text-to-speach.'),
             // richHtmlAndSvgForBoard: z.string().nullable().describe("to write to the board with rich html/svg/MathML content, or 'null' if no visual is needed. board dimensions: width: 400px, height: 250px." ),
 
 
@@ -60,10 +60,22 @@ const DocumentTeachingSchema = z.object({
                 )
             }).nullable().describe(
                 "Visual content for the board, or null when no visual is needed."
-            )
+            ),
         })
-  ).describe('split the response to lines.')
+  ).describe('split the response to lines.'),
+  options: z.array(
+      z.string()
+  ).nullable().describe("array of simple html elemnt with span root element. Use MathML if need to represent mathematical expressions.")
 });
+
+export const DocumentOptionsSchema = z.object({
+  options: z.array(
+      z.string()
+  ).nullable().describe("array of simple html elemnt with span root element. Use MathML if need to represent mathematical expressions.")
+});
+
+let TEACH_REQ = 0
+export const generateReqId = () => String(++TEACH_REQ) 
 
 export async function initOpenAILiveLines(bookId: string | undefined, wsClient: WebSocket, delegate: LinesDelegate, instructions?: string, writeToFile?: string) {
     // 🧠 Maintain local state for conversation history (mimicking ai.chats state)
@@ -139,15 +151,19 @@ export async function initOpenAILiveLines(bookId: string | undefined, wsClient: 
             if(hasLettersOrNumbers(text) || force)
                 _text += text + "\n"
         },
-        send: async (instructions?: string) => {
-            if(_text == "") {
-                return
-            }
+        send: async (instructions?: string, mode?: 'normal' | 'options') => {
+            // commented to allow agent to speak without user message  
+            // if(_text == "") {
+            //     return
+            // }
             
             try {
                 if (lastAbortController) {
                     lastAbortController?.abort();
                 }
+
+                const currentResId = generateReqId()
+
 
                 const activeAbortController = new AbortController();
                 lastAbortController = activeAbortController
@@ -155,6 +171,12 @@ export async function initOpenAILiveLines(bookId: string | undefined, wsClient: 
                 // 1. Push user's incoming message into the conversation thread
                 msgsKeys.push("user-text")
                 messages.push({ role: "user", content: _text });
+
+                if(instructions) {
+
+                    msgsKeys.push("instruction")
+                    messages.push({ role: "system", content: instructions });
+                }
 
                 _text = ''
 
@@ -167,13 +189,14 @@ export async function initOpenAILiveLines(bookId: string | undefined, wsClient: 
 
                 // model: "gpt-4o", // Equivalent tier to gemini-2.5-flash
                 // const model = "gpt-5.5-2026-04-23"
-                const model = "gpt-5.4-2026-03-05"
+                // const model = "gpt-5.4-2026-03-05"
                 // const model = "gpt-5.6-sol"
                 // const model = 'gpt-5.4-mini-2026-03-17'
+                const model = "gpt-5.6-luna"
                 // 2. Request a streaming completion from OpenAI
                 const responseStream = await openai.chat.completions.create({
                     model,
-                    messages: instructions ? [...messages, {role: 'system', content: instructions}] : messages,
+                    messages,
                     stream: true,
                     tools: [
                         // {
@@ -341,7 +364,8 @@ export async function initOpenAILiveLines(bookId: string | undefined, wsClient: 
                     stream_options: {
                         include_usage: true,
                     },
-                    response_format: zodResponseFormat(DocumentTeachingSchema, 'teaching_payload'),
+                    response_format: mode === 'options' ? zodResponseFormat(DocumentOptionsSchema, 'options_payload') : zodResponseFormat(DocumentTeachingSchema, 'teaching_payload'),
+                    service_tier: 'priority',
                 }, {
                     signal: activeAbortController.signal
                 });
@@ -371,15 +395,21 @@ export async function initOpenAILiveLines(bookId: string | undefined, wsClient: 
                     if(activeAbortController?.signal.aborted) {
                         return;
                     }
-                    delegate.onMessage(index, line.stepId, line.lang, line.textToSay, line.boardContent, activeAbortController!.signal);
-                  }, () => {
+                    delegate.onMessage(currentResId, index, line.stepId, line.lang, line.textToSay, line.boardContent, activeAbortController!.signal);
+                  }, (full, err) => {
                     if(activeAbortController?.signal.aborted) {
                         return;
                     }
-                    delegate.onCompleted()
+                    if(err) {
+                        console.error(`Cannot read full json stream. Error: ${err.message}`)
+                        return
+                    }
+                    delegate.onCompleted(full)
                   });
 
+                  let i = -1;
                 while (!currentResult.done) {
+                    i++;
                     if(activeAbortController.signal.aborted) {
                         break;
                     }
@@ -402,7 +432,7 @@ export async function initOpenAILiveLines(bookId: string | undefined, wsClient: 
 
                     if (textToken) {
                         if(writeToFile) {
-                            fs.appendFileSync(`./${writeToFile}.txt`, textToken, 'utf-8')
+                            fs.appendFileSync(`./${writeToFile}.txt`, textToken + (i === 0 ? '\n---------\n' : ''), 'utf-8')
                         }
                         fullAssistantResponse += textToken;
                         // console.log(`📋 Received Text Token [Last Chunk=${isLastChunk}]: ${textToken}`);
@@ -460,6 +490,8 @@ export async function initOpenAILiveLines(bookId: string | undefined, wsClient: 
                 }
                 const cost = calculateCost(model, tokensCount)
                 delegate.recordUsage(cost.total, {
+                    task: 'teaching',
+                    model,
                     type: 'tokens',
                     tokens: tokensCount,
                     info: `Input tokens: ${tokensCount.input} costs: ${cost.input}, Cached Input tokens: ${tokensCount.cachedInput} costs: ${cost.cachedInput}, output: ${tokensCount.output} includes reasoning tokens (${reasoningTokens}) costs: ${cost.output}. model: ${model}. Details: ${JSON.stringify(usage)}`
@@ -627,6 +659,8 @@ export type BoardContentType = "general" | "simpleDivision" | "longDivision" | "
   };
   
   export class JsonLineSplitter {
+    private raw = '';
+    private finished = false;
     private pipeline = chain([
       parser(),
       pick({ filter: "steps" }),
@@ -635,7 +669,7 @@ export type BoardContentType = "general" | "simpleDivision" | "longDivision" | "
   
     constructor(
       private readonly handleLine: (index: number, line: AgentLine) => void,
-      private readonly onEnd: () => void,
+      private readonly onEnd: (full: any, error?: Error) => void,
     ) {
         this.pipeline.on('data', ({ key, value }: { key: number; value: AgentLine }) => {
             this.handleLine(key, value);
@@ -645,16 +679,26 @@ export type BoardContentType = "general" | "simpleDivision" | "longDivision" | "
         console.error('JSON stream error:', error, error.message, error.stack);
       });
       this.pipeline.on('end', () => {
-        this.onEnd()
+        try {
+          this.finish(JSON.parse(this.raw));
+        } catch (err) {
+          this.finish(null, err as Error);
+        }
       })
     }
   
     push(delta: string) {
+        this.raw += delta;                   // keep a copy for the final parse
       this.pipeline.write(delta);
     }
   
     end() {
       this.pipeline.end();
+    }
+    private finish(full: any, error?: Error) {
+      if (this.finished) return;           // call onEnd exactly once
+      this.finished = true;
+      this.onEnd(full, error);
     }
   }
 

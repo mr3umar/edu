@@ -13,15 +13,15 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // 🛠️ DEFINE THE EXACT STRUCTURAL SCHEMA USING ZOD FOR OPENAI COMPLIANCE
 const validateBoardContentSchema = z.object({
   isValid: z.boolean().describe("true of the shared by user is valid, false if it is not."),
+  mistakes: z.string().nullable().describe("write the mistakes you find in the orginal text."),
   correctedContent: z.string().nullable().describe("only reurn corrected content when it the shared by user not valid."),
 });
 
 const SYSTEM_INSTRUCTION = `
-user will share html content, check if content information and facts are valid or not. 
-if valid just return isValid: true, if not, return isValid: false, and add correctedContent with the corrected version. 
-the correction should be minimal.
-
-
+* user will share html content, check if content information and facts are valid or not. 
+* if valid just return isValid: true, if not, return isValid: false, and add correctedContent with the corrected version. 
+* the correction should be minimal.
+*If the content contains any mathematical expression, equation, formula, or mathematical notation, it must use MathML; if it does not, return isValid: false and provide correctedContent with the same content minimally corrected to use MathML.
 `
   ;
 
@@ -76,6 +76,8 @@ export async function validateBoardContent(delegate: {recordUsage: RecordUsage},
       }
       const cost = calculateCost(model, tokensCount)
       delegate.recordUsage(cost.total, {
+        task: 'board-content-validate',
+          model,
           type: 'tokens',
           tokens: tokensCount,
           info: `Input tokens: ${tokensCount.input} costs: ${cost.input}, Cached Input tokens: ${tokensCount.cachedInput} costs: ${cost.cachedInput}, output: ${tokensCount.output} includes reasoning tokens (${reasoningTokens}) costs: ${cost.output}. model: ${model}. Details: ${JSON.stringify(usage)}`

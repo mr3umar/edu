@@ -1,5 +1,5 @@
 import { APP_ID, createCacheRepo, DEPLOYMENT_ID, initServices, ServiceResult, servicesLib, Context } from 'edu-ai-domain';
-import { ENV_TARGET, INSTANCE_ID, PORT, SCOPE, USERS_IAM } from './config.js';
+import { ENV_TARGET, httpOptions, INSTANCE_ID, PORT, SCOPE, USERS_IAM } from './config.js';
 import { createContext } from './context.js';
 import { createServiceFetch } from './common/fetch.js';
 import { createServer } from './common/server.js';
@@ -21,7 +21,10 @@ import { getBookStructure2 } from './book-structure-service-2.js';
 import { getOrCreateThumbnail, isValidThumbnailSize } from './thumbnail.js';
 import { analyzeTextbookImageWithGemini, denormalize2, IMG_H, IMG_W } from './ocr-service.js';
 import { DocumentRoot, transformToGlobalWordLayout } from './functions.js';
-
+import OpenAI from 'openai';
+import { WebSocket, WebSocketServer } from 'ws';
+import { createTasksContext } from './context/tasks.js';
+import https from 'node:https';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -240,6 +243,30 @@ const getServices = async () => {
         }
     }
 
+    const sendToClient: Context.sendToClient = async (scope, data) => {
+
+        const wsClient = scope.wsClient as WebSocket
+
+        wsClient.send(JSON.stringify(data))
+    }
+    
+    const getOpenaiSession: Context.getOpenaiSession = async () => {
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+        return openai
+    }
+
+    const getPageImageBase64: Context.getPageImageBase64 = async (scope, bookUid, pageIndex) => {
+
+            const imagesPath = path.join(__dirname, '../files/pdf-images/', bookUid);
+    
+            const imageBuffer = await fs.readFileSync(`${imagesPath}/${pageIndex}`);
+            const base64Image = imageBuffer.toString("base64");
+            return base64Image
+    }
+    
+    const tasksContext = createTasksContext()
+
     const services = initServices(
         APP_ID,
         servicesLib,
@@ -248,6 +275,7 @@ const getServices = async () => {
         },
     )({
         ...context,
+        ...tasksContext,
         appendFile,
         pdfToImages,
         extractText,
@@ -256,8 +284,12 @@ const getServices = async () => {
             return USERS_IAM
         },
         getClientUserId: async (scope) => context.getUserId(scope),
+        getClientLanguage: async (scope) => context.getClientLangauge(scope),
         getSource: async () => APP_ID,
         analyzePage,
+        sendToClient,
+        getOpenaiSession,
+        getPageImageBase64,
     }, {
         tajData,
         cloud: {
@@ -318,10 +350,10 @@ const getServices = async () => {
         
     });
 
-    SERVICES = services
+    SERVICES = {...services, ...tajData}
 
 
-    return services;
+    return {...services, ...tajData};
 }
 const start = async () => {
     const services = await getServices()
@@ -499,17 +531,93 @@ const start = async () => {
                     stream.pipe(res);
                 });
             }
-        }
+        },
+        undefined,
+        httpOptions,
     );
 
     server.listen(PORT, () => {
         console.log(`Start listening on ${PORT} for services`);
     });
 
-    for (const s in services) {
-        const cs = s.substring(0, 1).toLocaleUpperCase() + s.substring(1);
-        console.log(`${s}: {} as ${cs},`);
-    }
+
+
+    const wss = new WebSocketServer({ server });
+    
+    
+    wss.on('connection', async (wsClient: WebSocket) => {
+    
+    
+      wsClient.on('message', async (messageData: string) => {
+        try {
+          const packet = JSON.parse(messageData.toString());
+    
+          if(!packet.accessToken) {
+            console.warn(`UNAUTHRIZED: missing accessToken in socket.packet`)
+            return
+          }
+    
+          let accessKeyData: AccessKeyData | undefined
+          try {
+            accessKeyData = CryptoUtil.verifyPayload(packet.accessToken, CLOUD_PUBLIC_KEY);
+          }
+          catch(err) {
+            console.warn(`UNAUTHRIZED: invalid socket.packet.accessToken`)        
+            return
+          }
+          if(!accessKeyData?.ownerId) {
+            console.warn(`UNAUTHRIZED: missing ownerId in socket.packet.accessToken`)
+            return
+          }
+    
+          // if(!aiSessions[accessKeyData.ownerId]) {
+          //   aiSessions[accessKeyData.ownerId] = await createAiSession(wsClient, accessKeyData.ownerId)
+          // }
+          // const aiSession = aiSessions[accessKeyData.ownerId]
+    
+        
+          // aiSession.handleMsg(packet)
+    
+          if(!packet.language) {
+            throw new Error('language is missing')
+          }
+          if(!packet.conversationUid) {
+            throw new Error('conversationUid is missing')
+          }
+          const scope = {
+            accessKeyData,
+            instanceId: INSTANCE_ID,
+            wsClient, // temp
+            language: packet.language,
+          }
+    
+        //   console.log(`New WS Req: ${packet.currentBookUid}, ${packet.currentPageIndex}, recording: ${packet.recordingId}`)
+          await SERVICES?.handleMsg({
+            conversationUid: packet.conversationUid,
+            bookUid: packet.currentBookUid,
+            pageIndex: packet.currentPageIndex,
+            ...packet,
+          }, scope)
+          
+        } catch (err: any) {
+          console.error('Error handling data frame coming from client web window:', err.message, err.stack);
+        }
+      });
+    
+      wsClient.on('close', () => {
+        console.log('📱 Frontend client disconnected.');
+        // if (voiceAiSession) {
+        //   voiceAiSession.close();
+        // }
+      });
+    
+    });
+    
+    
+    // for (const s in services) {
+    //     const cs = s.substring(0, 1).toLocaleUpperCase() + s.substring(1);
+    //     console.log(`${s}: {} as ${cs},`);
+    // }
 
     // {
     //     const fetchNotfication = createFetchNotifications({

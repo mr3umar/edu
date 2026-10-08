@@ -12,7 +12,7 @@ import { calculateCost } from "./pricing.js";
 import { TEACHING_PLAN } from "./prompts/teaching-plan-4 - lines.js";
 import { LinesDelegate } from "./types.js";
 import { MAX_INPUT_TOKENS } from './config.js';
-import { AgentLine } from './text-openai-lines.js';
+import { AgentLine, generateReqId } from './text-openai-lines.js';
 
 // NOTE: `@google/genai` is the required package (npm i @google/genai).
 // Some field names below (usageMetadata shape, abortSignal wiring) can
@@ -166,6 +166,8 @@ export async function initGeminiLiveLines(bookId: string, wsClient: WebSocket, d
                 const activeAbortController = new AbortController();
                 lastAbortController = activeAbortController;
 
+                const currentResId = generateReqId()
+                
                 // 1. Push the user's incoming turn (text + any queued
                 //    images/audio) into the conversation thread.
                 msgsKeys.push("user-text");
@@ -328,7 +330,7 @@ export async function initGeminiLiveLines(bookId: string, wsClient: WebSocket, d
 
                 const splitter = new JsonLineSplitter((index, line) => {
                     console.log("LLLL:" + JSON.stringify(line));
-                    delegate.onMessage(index, line.stepId, line.lang, line.textToSay, line.boardContent, activeAbortController!.signal);
+                    delegate.onMessage(currentResId, index, line.stepId, line.lang, line.textToSay, line.boardContent, activeAbortController!.signal);
                 });
 
                 while (!currentResult.done) {
@@ -383,6 +385,8 @@ export async function initGeminiLiveLines(bookId: string, wsClient: WebSocket, d
                 const reasoningTokens = usage?.thoughtsTokenCount ?? 0;
                 const cost = calculateCost(model, tokensCount);
                 delegate.recordUsage(cost.total, {
+                    task: 'teaching',
+                    model,
                     type: 'tokens',
                     tokens: tokensCount,
                     info: `Input tokens: ${tokensCount.input} costs: ${cost.input}, Cached Input tokens: ${tokensCount.cachedInput} costs: ${cost.cachedInput}, output: ${tokensCount.output} includes reasoning tokens (${reasoningTokens}) costs: ${cost.output}. model: ${model}. Details: ${JSON.stringify(usage)}`,

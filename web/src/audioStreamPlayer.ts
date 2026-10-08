@@ -1,6 +1,8 @@
 import SignalsmithStretch, { type StretchNode } from "signalsmith-stretch";
 import { showCaption, showLaser, showOptions, writeOnBoard } from "./api/books";
 import type { BoardData, MicDelegate, QuestionOption, StepId } from "./types/book";
+import { markVadEvent } from "./lib/vadDiagnostics";
+import { analyserDbfs, dbfsToLevel, setTutorLevelSource } from "./lib/voiceLevel";
 import type { SpeechProgress } from "./lib/captionTiming";
 
 const SAMPLE_RATE = 24000;
@@ -18,6 +20,15 @@ const STREAM_GAP_S = 1.08;
 
 // Lead time so a chunk is never scheduled in the past.
 const SCHEDULE_PAD_S = 0.02;
+
+// Audio a stream should have before it starts playing. The backend sends a
+// stream's first chunk as soon as it can and the rest can lag behind it;
+// started straight away, the first chunk could run out before the second
+// arrived and cut the voice off mid-word.
+const PREBUFFER_S = 0.3;
+// Longest wait for that, from the stream's first audio; then it plays with
+// what it has.
+const PREBUFFER_MAX_WAIT_MS = 400;
 
 // Only the most recent streams keep their audio for rewinding, so memory
 // doesn't grow for the whole session (~96KB per second of audio).
@@ -49,9 +60,23 @@ type Stream = {
         gapTimer: ReturnType<typeof setTimeout> | null;
         stallTimer: ReturnType<typeof setTimeout> | null;
         lastPacketAt: number;
+        // When its first audio arrived (see readyToStart).
+        firstAudioAt: number | null;
         completed: boolean;
         evicted: boolean;
         optionsShown: boolean;
+        // Announced without any audio (e.g. just options). It plays as a
+        // single silent moment, right after the stream before it, so what it
+        // carries shows then.
+        silent: boolean;
+};
+
+// What a stream carries besides its audio (from 'new-audio-stream').
+export type StreamInfo = {
+        board: BoardData | undefined;
+        options: QuestionOption[] | undefined;
+        stepId: StepId | undefined;
+        caption: string | undefined;
 };
 
 type Scheduled = {
@@ -147,9 +172,31 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
                 return silentSink;
         };
 
+        // Everything heard also feeds this analyser (muted, through the sink),
+        // so the AI icon can show how loud the tutor is.
+        let levelTap: AnalyserNode | undefined;
+        let levelSamples: Uint8Array<ArrayBuffer> | undefined;
+        const levelTapFor = (context: AudioContext) => {
+                if (!levelTap) {
+                        levelTap = context.createAnalyser();
+                        levelTap.fftSize = 512;
+                        levelSamples = new Uint8Array(levelTap.fftSize);
+                        levelTap.connect(triggerSink(context));
+                }
+                return levelTap;
+        };
+        setTutorLevelSource(() => {
+                if (!levelTap || !levelSamples) return 0;
+                levelTap.getByteTimeDomainData(levelSamples);
+                return dbfsToLevel(analyserDbfs(levelSamples));
+        });
+
         const audioContext = () => {
                 if (!ctx) {
                         ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                        // DIAGNOSTIC: see logRecordingTimeline in mic3.ts.
+                        const created = ctx;
+                        created.onstatechange = () => markVadEvent(`tutor AudioContext: ${created.state}`);
                         void setUpStretch(ctx);
                 }
                 return ctx;
@@ -168,6 +215,7 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
                         const gain = context.createGain();
                         node.connect(gain);
                         gain.connect(context.destination);
+                        gain.connect(levelTapFor(context));
 
                         await node.schedule({ active: rate !== 1, semitones: semitonesFor(rate) });
                         stretchLatency = await node.latency();
@@ -228,6 +276,79 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
 
         // ---- Arrival: reorder packets into each stream's chunk list ----
 
+        // The stream with this id, created (in arrival order) the first time
+        // it's announced or its audio arrives. Undefined for a cancelled
+        // answer's streams, which are dropped.
+        const ensureStream = (streamId: string, info: StreamInfo): Stream | undefined => {
+                // A cancelled answer: the server may still be sending it.
+                if (discardedStreams.has(streamId)) return undefined;
+
+                let streamIdx = streamIndexById.get(streamId);
+                if (streamIdx === undefined) {
+                        if (discarding) {
+                                discardedStreams.add(streamId);
+                                return undefined;
+                        }
+                        streamIdx = streams.push({
+                                id: streamId,
+                                ...info,
+                                chunks: [],
+                                pending: new Map(),
+                                nextSeq: 0,
+                                gapTimer: null,
+                                stallTimer: null,
+                                lastPacketAt: performance.now(),
+                                firstAudioAt: null,
+                                completed: false,
+                                evicted: false,
+                                optionsShown: false,
+                                silent: false,
+                        }) - 1;
+                        streamIndexById.set(streamId, streamIdx);
+                        // A new stream: the backend is sending again.
+                        noMoreStreams = false;
+                        // The ones before it that never got any audio won't get any.
+                        for (let i = 0; i < streamIdx; i++) {
+                                if (!hasAudioArrived(streams[i])) markSilent(streams[i]);
+                        }
+                        evictOldAudio();
+                        finishStalledStreams();
+                }
+
+                const stream = streams[streamIdx];
+                // The stream's metadata can land after its first packet.
+                stream.board ??= info.board;
+                stream.stepId ??= info.stepId;
+                stream.caption ??= info.caption;
+                stream.options ??= info.options;
+                return stream;
+        };
+
+        // A stream was announced ('new-audio-stream'). Its audio usually
+        // follows; if none has come by the time the next stream is announced
+        // or the answer is complete, it has none (see markSilent).
+        const announce = (streamId: string, info: StreamInfo) => {
+                ensureStream(streamId, info);
+                pump();
+        };
+
+        const hasAudioArrived = (stream: Stream) =>
+                stream.nextSeq > 0 || stream.pending.size > 0 || stream.chunks.length > 0;
+
+        // A single silent sample, standing in for a stream that has no audio.
+        let silentBuffer: AudioBuffer | undefined;
+        const silence = () => (silentBuffer ??= new AudioBuffer({ length: 1, sampleRate: SAMPLE_RATE }));
+
+        // The stream has no audio: it plays as a silent moment instead, so its
+        // options (and board) show when playback reaches it.
+        const markSilent = (stream: Stream) => {
+                if (stream.completed || stream.evicted) return;
+                stream.silent = true;
+                stream.chunks = [{ buffer: silence(), wordsIds: undefined }];
+                stream.completed = true;
+                clearTimers(stream);
+        };
+
         const receive = (
                 base64Data: string | undefined,
                 wordsIds: string[] | undefined,
@@ -239,45 +360,8 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
                 stepId?: StepId,
                 caption?: string,
         ) => {
-                // Audio of a cancelled answer: the server may still be sending it.
-                if (discardedStreams.has(streamId)) return;
-
-                let streamIdx = streamIndexById.get(streamId);
-                if (streamIdx === undefined) {
-                        if (discarding) {
-                                discardedStreams.add(streamId);
-                                return;
-                        }
-                        streamIdx = streams.push({
-                                id: streamId,
-                                board,
-                                stepId,
-                                caption,
-                                options,
-                                chunks: [],
-                                pending: new Map(),
-                                nextSeq: 0,
-                                gapTimer: null,
-                                stallTimer: null,
-                                lastPacketAt: performance.now(),
-                                completed: false,
-                                evicted: false,
-                                optionsShown: false,
-                        }) - 1;
-                        streamIndexById.set(streamId, streamIdx);
-                        // A new stream: the backend is sending again.
-                        noMoreStreams = false;
-                        evictOldAudio();
-                        finishStalledStreams();
-                }
-
-                const stream = streams[streamIdx];
-                // The stream's metadata can land after its first packet.
-                stream.board ??= board;
-                stream.stepId ??= stepId;
-                stream.caption ??= caption;
-                stream.options ??= options;
-                if (stream.completed || stream.evicted) return;
+                const stream = ensureStream(streamId, { board, options, stepId, caption });
+                if (!stream || stream.completed || stream.evicted) return;
 
                 // A completion marker without a seq goes after everything seen so far.
                 const at = seq ?? Math.max(stream.nextSeq - 1, ...stream.pending.keys()) + 1;
@@ -337,8 +421,12 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
         const answerComplete = () => {
                 noMoreStreams = true;
                 for (const stream of streams) {
-                        if (!stream.completed && !stream.evicted) armStallTimer(stream);
+                        if (stream.completed || stream.evicted) continue;
+                        // Announced, but no audio came: it has none.
+                        if (!hasAudioArrived(stream)) markSilent(stream);
+                        else armStallTimer(stream);
                 }
+                pump();
         };
 
         // A new stream has started: older ones that already went quiet are done.
@@ -356,8 +444,11 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
         // leaving playback waiting on the stall timeout.
         const connectionLost = () => {
                 for (const stream of streams) {
-                        if (!stream.completed && !stream.evicted) forceComplete(stream, "cut off by a lost connection");
+                        if (stream.completed || stream.evicted) continue;
+                        if (!hasAudioArrived(stream)) markSilent(stream);
+                        else forceComplete(stream, "cut off by a lost connection");
                 }
+                pump();
         };
 
         const clearTimers = (stream: Stream) => {
@@ -376,7 +467,10 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
                         stream.nextSeq++;
 
                         const buffer = packet.base64Data ? decode(packet.base64Data) : undefined;
-                        if (buffer) stream.chunks.push({ buffer, wordsIds: packet.wordsIds });
+                        if (buffer) {
+                                stream.chunks.push({ buffer, wordsIds: packet.wordsIds });
+                                stream.firstAudioAt ??= performance.now();
+                        }
 
                         if (packet.completed) {
                                 stream.completed = true;
@@ -432,6 +526,8 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
                         const stream = streams[cursorStream];
 
                         if (!stream.evicted && cursorChunk < stream.chunks.length) {
+                                // A stream's start waits for a little audio to build up.
+                                if (cursorChunk === 0 && !readyToStart(stream)) break;
                                 schedule(cursorStream, cursorChunk, 0);
                                 cursorChunk++;
                                 continue;
@@ -447,14 +543,41 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
                 updatePlaying();
         };
 
+        // Whether a stream can start playing: it has PREBUFFER_S of audio, or it's
+        // complete, or it has waited PREBUFFER_MAX_WAIT_MS since its first audio.
+        // Not needed when it's lined up behind audio still playing (with the gap
+        // between streams), which gives its audio the same time to build up.
+        // Otherwise pump() is called again when the wait runs out.
+        let prebufferTimer: ReturnType<typeof setTimeout> | undefined;
+        const readyToStart = (stream: Stream): boolean => {
+                if (stream.completed || stream.silent) return true;
+
+                const lead = nextStartTime + pendingGap - audioContext().currentTime;
+                if (lead >= PREBUFFER_S) return true;
+
+                const buffered = stream.chunks.reduce((total, chunk) => total + chunk.buffer.duration, 0);
+                if (buffered >= PREBUFFER_S) return true;
+
+                const waited = performance.now() - (stream.firstAudioAt ?? performance.now());
+                if (waited >= PREBUFFER_MAX_WAIT_MS) return true;
+
+                clearTimeout(prebufferTimer);
+                prebufferTimer = setTimeout(pump, PREBUFFER_MAX_WAIT_MS - waited);
+                return false;
+        };
+
         const schedule = (streamIdx: number, chunkIdx: number, offset: number) => {
                 const context = audioContext();
-                const chunk = streams[streamIdx].chunks[chunkIdx];
+                const stream = streams[streamIdx];
+                const chunk = stream.chunks[chunkIdx];
 
                 // After an idle spell the gap has already passed in real time.
-                const startAt = Math.max(nextStartTime + pendingGap, context.currentTime + SCHEDULE_PAD_S);
+                // A silent stream comes straight after the one before it; the
+                // gap is kept for the next one that's heard.
+                const gap = stream.silent ? 0 : pendingGap;
+                const startAt = Math.max(nextStartTime + gap, context.currentTime + SCHEDULE_PAD_S);
                 const endAt = startAt + (chunk.buffer.duration - offset) / rate;
-                pendingGap = 0;
+                if (!stream.silent) pendingGap = 0;
                 nextStartTime = endAt;
 
                 const latency = usingStretch() ? stretchLatency : 0;
@@ -463,6 +586,7 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
                 source.buffer = chunk.buffer;
                 source.playbackRate.value = rate;
                 source.connect(usingStretch() ? stretch! : context.destination);
+                if (!usingStretch()) source.connect(levelTapFor(context));
 
                 // A silent node that ends the moment the chunk becomes audible,
                 // used as a sample-accurate "chunk started" callback.
@@ -512,7 +636,9 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
                                 writeOnBoard(stream.board, stream.stepId);
                         }
                         // Its caption replaces the last one (cleared if it has none).
-                        showCaption(stream.caption);
+                        // A silent stream (e.g. just options) leaves the caption of
+                        // what was heard before it, unless it has its own.
+                        if (!stream.silent || stream.caption !== undefined) showCaption(stream.caption);
                 }
 
                 if (stream.options?.length && !stream.optionsShown) {
@@ -603,7 +729,7 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
         // The nearest earlier stream that still has its audio, if any.
         const previousStreamIdx = (streamIdx: number): number | undefined => {
                 for (let i = streamIdx - 1; i >= 0; i--) {
-                        if (!streams[i].evicted && streams[i].chunks.length > 0) return i;
+                        if (!streams[i].evicted && !streams[i].silent && streams[i].chunks.length > 0) return i;
                 }
                 return undefined;
         };
@@ -622,11 +748,19 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
 
                 const current = currentStreamIdx();
                 const hasPrevious = current !== undefined && previousStreamIdx(current) !== undefined;
-                const hasNext = position !== undefined && position.streamIdx + 1 < streams.length;
+                // Next works as soon as something is playing, if there's a later
+                // stream or one may still come (the answer isn't complete yet):
+                // skipping to a stream that hasn't arrived waits for it (see
+                // playNextStream), rather than leaving Next disabled until it does.
+                const hasNext = position !== undefined && (position.streamIdx + 1 < streams.length || !noMoreStreams);
 
                 // pump() only stops short of the end at a stream still arriving,
                 // so the cursor being before the end means audio is on its way.
-                const pending = scheduled.length > 0 || cursorStream < streams.length;
+                // Once the backend has said the answer is complete ("ready"), that
+                // stream is only waiting for its completion marker (or the stall
+                // timeout), so it's not shown as still thinking once what has
+                // arrived has played; any late audio still plays when it comes.
+                const pending = scheduled.length > 0 || (cursorStream < streams.length && !noMoreStreams);
 
                 return { active, paused, rate, hasPrevious, hasNext, pending };
         };
@@ -750,6 +884,7 @@ export function createAudioStreamPlayer(getDelegate: () => MicDelegate | undefin
 
         return {
                 receive,
+                announce,
                 pause,
                 resume,
                 playNextStream,

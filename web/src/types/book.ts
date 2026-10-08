@@ -66,7 +66,8 @@ export type BoardData =
 export type AiAgentStatus = "ready" | "listening" | "thinking" | "speaking" | "paused"
 
 export type Mic = {
-  start: () => void,
+  // Rejects when the mic can't be turned on (the browser's error).
+  start: () => Promise<void>,
   stop: (muteOnly: boolean) => void,
   endPlayback: () => void,
   // The user cancelled the answer: stops it and drops the rest of it as it

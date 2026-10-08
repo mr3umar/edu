@@ -23,6 +23,8 @@ server/tmp
 server/.env
 web/.env
 server/chirp-key.json
+server/certs
+web/certs
 
 # Runtime data
 pids

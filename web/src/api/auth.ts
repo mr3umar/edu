@@ -1,5 +1,6 @@
 import { createRestService } from './rest/createRestService';
 import { ApiError } from './rest/apiError';
+import { resetConversation } from './conversation';
 import { saveSession, saveAccessToken, getStoredUser, setStoredUser, clearSession } from './rest/token';
 import type {
   ServiceDef,
@@ -196,4 +197,6 @@ export async function updateMyInfo(params: {
 
 export function signOut(): void {
   clearSession();
+  // The next user (or session) starts their own conversation.
+  resetConversation();
 }

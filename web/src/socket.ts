@@ -1,7 +1,14 @@
+import { getCurrentRequestId, isStaleRequest, startNewRequest } from "./lib/requestId";
+import { markVadEvent } from "./lib/vadDiagnostics";
 import { changeTutorialStep, getCurrentStepId, goToPage, handleAiTask, openTutorial, setAiAgentStatus, showLaser, showOptions, writeOnBoard, writeOnTextbook } from "./api/books";
 import type { BoardData, QuestionOption, StepId } from "./types/book";
 import { getAuthToken } from "./api/rest/token";
 import { ensureFreshToken } from "./api/rest/http";
+import { ensureConversation, getConversationUid } from "./api/conversation";
+import { errorMessage } from "./api/rest/apiError";
+import { currentDocumentLang } from "./lib/useDocumentLang";
+import { showMessage } from "./components/ui/message-dialog";
+import type { StreamInfo } from "./audioStreamPlayer";
 
 
 const WS_HOST = import.meta.env.VITE_WS_HOST;
@@ -12,10 +19,15 @@ const RECONNECT_MAX_DELAY_MS = 15000;
 export type Socket = {
         isConnected: () => boolean;
         getSocket: () => WebSocket;
-        // Sends a message with the user's access token attached. Returns false
-        // (and sends nothing) while the connection isn't open.
+        // Sends a message with the user's access token and conversationUid
+        // attached. Before the conversation exists, it's created first and
+        // messages wait (in order) for it. Returns false (and sends nothing)
+        // while the connection isn't open.
         send: (message: Record<string, unknown>) => boolean;
         onIncomingAudio: (handler: (base64: string, wordsIds: string[] | undefined, seq: number, streamId: string, board: BoardData | undefined, options: QuestionOption[] | undefined, streamCompleted: boolean, stepId: StepId | undefined, caption: string | undefined) => void) => void
+        // A stream was announced ('new-audio-stream'), with what it carries.
+        // It may have no audio at all (e.g. just options).
+        onStreamAnnounced: (handler: (streamId: string, info: StreamInfo) => void) => void
         // Called when the connection drops (before reconnecting).
         onDisconnected: (handler: () => void) => void
         // Called after sending a new request to the tutor (see isNewRequest).
@@ -52,6 +64,31 @@ const parseBoardData = (boardData: any): BoardData | undefined => {
         return undefined
 }
 
+// A stream's options, as { content } each. They may come as plain strings
+// (["opt 1", "opt 2"]) or already as { content }; anything else is skipped.
+const parseOptions = (options: unknown): QuestionOption[] | undefined => {
+        if (!Array.isArray(options)) return undefined
+        const parsed = options.flatMap(option =>
+                typeof option === 'string' ? [{ content: option }]
+                : typeof option?.content === 'string' ? [{ content: option.content }]
+                : [])
+        return parsed.length ? parsed : undefined
+}
+
+// Whether the tutor's connection is open, for the UI (see useSocketConnected).
+let _connected = false
+const connectionListeners = new Set<() => void>()
+const setConnected = (connected: boolean) => {
+        if (_connected === connected) return
+        _connected = connected
+        connectionListeners.forEach(listener => listener())
+}
+export const isSocketConnected = () => _connected
+export const subscribeConnection = (listener: () => void) => {
+        connectionListeners.add(listener)
+        return () => { connectionListeners.delete(listener) }
+}
+
 export let _socket: Socket
 export const startSocket = () => {
 
@@ -67,9 +104,13 @@ export const startSocket = () => {
         // Counts connections, to keep stream ids from different ones apart.
         let connectionNumber = 0
         let _onDisconnected: (() => void) | undefined
+        let _onStreamAnnounced: ((streamId: string, info: StreamInfo) => void) | undefined
         let _onRequestSent: (() => void) | undefined
 
         let _onIncomingAudio: (base64: string, wordsIds: string[], seq: number, streamId: string, board: BoardData | undefined, options: QuestionOption[] | undefined, streamCompleted: boolean, stepId: StepId | undefined, caption: string | undefined) => void;
+
+        // DIAGNOSTIC: streams already noted as skipped (see onmessage).
+        const staleStreams = new Set<string>()
 
         _socket = {
                 isConnected: () => isConnected,
@@ -79,22 +120,37 @@ export const startSocket = () => {
                                 console.warn(`[socket] not connected; dropped '${message.event}' message`)
                                 return false
                         }
-                        // Sending stays synchronous so audio chunks keep their order: this
-                        // message carries the current token, and a refresh (if it's close to
-                        // expiring, with a margin) runs in the background for the next ones.
-                        void ensureFreshToken()
-                        // While a board with a lesson step shows, every message says which step.
+                        // While a board with a lesson step shows, every message says which
+                        // step — the one showing now, even if the message has to wait below.
                         const stepId = getCurrentStepId()
-                        socket.send(JSON.stringify({
+                        // Typed text and clarify actions ('json') are new requests. Spoken
+                        // ones get theirs from mic3.ts when speech starts. Anything else
+                        // (cancel, pause, resume...) is about the latest request.
+                        const requestId = message.requestId
+                                ?? (message.event === 'json' ? startNewRequest() : getCurrentRequestId())
+                        const outgoing = {
                                 ...message,
                                 ...(stepId !== undefined ? { stepId } : {}),
-                                accessToken: getAuthToken(),
-                        }))
-                        if (isNewRequest(message)) _onRequestSent?.()
+                                ...(requestId !== undefined ? { requestId } : {}),
+                        }
+
+                        // Every message belongs to a conversation. Until there is one, it's
+                        // created (once) and messages queue behind it, so audio chunks keep
+                        // their order.
+                        const conversationUid = getConversationUid()
+                        if (conversationUid && !waitingForConversation.length) {
+                                transmit(outgoing, conversationUid)
+                        } else {
+                                waitingForConversation.push(outgoing)
+                                if (waitingForConversation.length === 1) void startConversation()
+                        }
                         return true
                 },
                 onIncomingAudio: (handler => {
                         _onIncomingAudio = handler
+                }),
+                onStreamAnnounced: (handler => {
+                        _onStreamAnnounced = handler
                 }),
                 onDisconnected: (handler => {
                         _onDisconnected = handler
@@ -102,6 +158,46 @@ export const startSocket = () => {
                 onRequestSent: (handler => {
                         _onRequestSent = handler
                 }),
+        }
+
+        // Messages sent before the conversation was created, in order.
+        let waitingForConversation: Record<string, unknown>[] = []
+
+        // Sending stays synchronous so audio chunks keep their order: this
+        // message carries the current token, and a refresh (if it's close to
+        // expiring, with a margin) runs in the background for the next ones.
+        const transmit = (message: Record<string, unknown>, conversationUid: string) => {
+                if (socket?.readyState !== WebSocket.OPEN) {
+                        console.warn(`[socket] not connected; dropped '${message.event}' message`)
+                        return
+                }
+                void ensureFreshToken()
+                socket.send(JSON.stringify({
+                        ...message,
+                        conversationUid,
+                        accessToken: getAuthToken(),
+                }))
+                if (isNewRequest(message)) _onRequestSent?.()
+        }
+
+        const startConversation = async () => {
+                const lang = currentDocumentLang()
+                try {
+                        const conversationUid = await ensureConversation(lang)
+                        const waiting = waitingForConversation
+                        waitingForConversation = []
+                        waiting.forEach(message => transmit(message, conversationUid))
+                } catch (err) {
+                        // Nothing can be sent without a conversation: drop what waited,
+                        // and let the next message try again.
+                        console.error('[socket] could not create a conversation; dropped', waitingForConversation.length, 'message(s)', err)
+                        waitingForConversation = []
+                        void showMessage({
+                                tone: 'danger',
+                                title: lang === 'en' ? "Couldn't reach the tutor" : 'تعذّر الوصول إلى المعلّم',
+                                description: errorMessage(err, lang),
+                        })
+                }
         }
 
         const audioStreams: {[key: string]: {
@@ -142,11 +238,28 @@ export const startSocket = () => {
                 socket.onopen = () => {
                         isConnected = true
                         reconnectAttempts = 0
+                        setConnected(true)
                         status = 'Connected & Instant. Click "Go Live"!'
                 };
 
                 socket.onmessage = (event) => {
                         const packet = JSON.parse(event.data);
+
+                        // The tutor's audio for an older request than the latest one sent
+                        // is skipped: a newer request superseded that answer. The backend
+                        // tags 'new-audio-stream' and 'audio' with the request's id;
+                        // everything else (statuses, tasks, board...) is global and
+                        // always goes through.
+                        if ((packet.event === 'new-audio-stream' || packet.event === 'audio') && isStaleRequest(packet.requestId)) {
+                                // DIAGNOSTIC: once per stream, not for every audio packet.
+                                const key = streamKey(packet.streamId)
+                                if (!staleStreams.has(key)) {
+                                        staleStreams.add(key)
+                                        markVadEvent(`skipped tutor audio of old request ${packet.requestId} (stream ${key})`)
+                                }
+                                return
+                        }
+
                         if (packet.event === 'audio') {
                                 if(_onIncomingAudio) {
                                         const stream = audioStreams[streamKey(packet.streamId)]
@@ -156,13 +269,16 @@ export const startSocket = () => {
                                         _onIncomingAudio(packet.data, wordsIds, packet.seq, streamKey(packet.streamId), stream?.board, stream?.options, packet?.completed, stream?.stepId, stream?.caption)
                                 }
                         } else if (packet.event === 'new-audio-stream') {
-                                audioStreams[streamKey(packet.streamId)] = {
+                                const stream = {
                                         board: parseBoardData(packet.boardData),
-                                        options: packet.options,
+                                        options: parseOptions(packet.options),
                                         stepId: packet.stepId,
                                         caption: typeof packet.text === 'string' ? packet.text : undefined,
                                         wordsIds: Array.isArray(packet.wordsIds) ? packet.wordsIds : undefined,
                                 }
+                                audioStreams[streamKey(packet.streamId)] = stream
+                                // Its audio (if it has any) follows as 'audio' packets.
+                                _onStreamAnnounced?.(streamKey(packet.streamId), stream)
                         } else if (packet.event === 'status') {
                                 status = packet.data
                         } else if (packet.event === 'writeOnBook') {
@@ -303,6 +419,7 @@ export const startSocket = () => {
                 socket.onclose = () => {
                         isConnected = false
                         status = 'Disconnected from backend.'
+                        setConnected(false)
                         _onDisconnected?.()
                         scheduleReconnect()
                 };

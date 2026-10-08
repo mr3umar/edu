@@ -1,5 +1,9 @@
 export const PORT = process.argv[2] || 9004;
 export const ENV_TARGET = (process.env.ENV_TARGET ?? 'DEV') as 'PROD' | 'TEST' | 'DEV';
+import https from 'node:https';
+import * as fs from 'fs';
+
+
 // console.log(`Target Env: ${ENV_TARGET}`);
 
 // export const GORMIC_CLOUD_URL =
@@ -18,3 +22,9 @@ export const SCOPE = {
 
 export const MAX_INPUT_TOKENS = 250000;
 export const USERS_IAM = "users"
+
+
+export const httpOptions: https.ServerOptions = {
+        key: fs.readFileSync('./certs/dev-key.pem'),
+        cert: fs.readFileSync('./certs/dev-cert.pem'),
+};

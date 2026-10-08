@@ -30,6 +30,7 @@ type TranscriptionUsage = {
   audioMinutes: number;
 
   inputTokens: number;
+  cachedInputTokens: number;
   outputTokens: number;
 
   costUsd: number;
@@ -70,6 +71,7 @@ export async function streamAudioToOpenAI(delegate: {
   // Used by gpt-4o-transcribe if usage information is
   // returned by the API.
   let inputTokens = 0;
+  let cachedInputTokens = 0;
   let outputTokens = 0;
 
   /*
@@ -106,11 +108,11 @@ export async function streamAudioToOpenAI(delegate: {
               language: 'en',
               // prompt: fullPrompt,
             },
-            "turn_detection": //null
-            {
-              "type": "server_vad",
-              "silence_duration_ms": 2000
-            }
+            // "turn_detection": //null
+            // {
+            //   "type": "server_vad",
+            //   "silence_duration_ms": 2000
+            // }
           },
         },
       },
@@ -174,6 +176,7 @@ export async function streamAudioToOpenAI(delegate: {
       audioMinutes,
 
       inputTokens,
+      cachedInputTokens,
       outputTokens,
 
       costUsd,
@@ -247,7 +250,7 @@ export async function streamAudioToOpenAI(delegate: {
 
       // console.log("####4", JSON.stringify(response))
       // {"type":"conversation.item.input_audio_transcription.completed","event_id":"event_EOq1IVvFwdOjDnydAj4ID","item_id":"item_EOq1H0trOapbGYZiWnnVH","content_index":0,"transcript":"cough","usage":{"type":"tokens","total_tokens":12,"input_tokens":8,"input_token_details":{"text_tokens":1,"audio_tokens":7},"output_tokens":4}}
-      
+
       console.log(
         `\n[FINAL TRANSCRIPT]: ${response.transcript}\n`
       );
@@ -261,7 +264,7 @@ export async function streamAudioToOpenAI(delegate: {
     }
     if (response.type === "conversation.item.input_audio_buffer.committed") {
       console.log("SERVER COMMITTED");
-  }
+    }
 
     /*
      * Usage information
@@ -284,6 +287,12 @@ export async function streamAudioToOpenAI(delegate: {
       ) {
         inputTokens =
           usage.input_tokens;
+      }
+      if (
+        typeof usage.cached_tokens === 'number'
+      ) {
+        inputTokens =
+          usage.cached_tokens;
       }
 
       if (
@@ -377,7 +386,7 @@ export async function streamAudioToOpenAI(delegate: {
     if (
       force ||
       bytesSinceCommit >=
-        COMMIT_THRESHOLD_BYTES
+      COMMIT_THRESHOLD_BYTES
     ) {
 
       ws.send(
@@ -443,7 +452,7 @@ export async function streamAudioToOpenAI(delegate: {
       if (
         ended ||
         ws.readyState !==
-          WebSocket.OPEN
+        WebSocket.OPEN
       ) {
         return;
       }
@@ -527,11 +536,11 @@ export async function streamAudioToOpenAI(delegate: {
 
       const usage = calculateUsage();
 
-        if(reset) {
-          totalAudioBytes = 0
-          inputTokens = 0
-          outputTokens = 0
-        }
+      if (reset) {
+        totalAudioBytes = 0
+        inputTokens = 0
+        outputTokens = 0
+      }
 
       return usage;
     },

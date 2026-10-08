@@ -3,8 +3,15 @@ import { getCurrentBookUid, getCurrentLanguage, getCurrentPageIndex, setAiAgentS
 import { createAudioStreamPlayer } from "./audioStreamPlayer";
 import type { Socket } from "./socket";
 import type { MicDelegate } from "./types/book";
+import { markVadEvent, vadEventsSince } from "./lib/vadDiagnostics";
+import { startNewRequest } from "./lib/requestId";
+import { dbfsToLevel, setMicLevel } from "./lib/voiceLevel";
 
 let _mic: any;
+
+// When the user starts talking, pause the answer that's playing (old behavior).
+// Off: the answer keeps playing while the user speaks. Set to true to revert.
+const PAUSE_PLAYBACK_ON_SPEECH = false;
 
 
 
@@ -28,7 +35,19 @@ export const startLiveConversationVad = async (socket: Socket) => {
         const websocket = () => socket.getSocket();
 
         const player = createAudioStreamPlayer(() => delegate);
-        socket.onIncomingAudio(player.receive);
+        // DIAGNOSTIC: the wrappers note the tutor's audio arriving (see logRecordingTimeline).
+        const streamsWithAudio = new Set<string>();
+        socket.onIncomingAudio((base64, wordsIds, seq, streamId, ...rest) => {
+                if (!streamsWithAudio.has(streamId)) {
+                        streamsWithAudio.add(streamId);
+                        markVadEvent(`tutor audio: first chunk of stream ${streamId}`);
+                }
+                player.receive(base64, wordsIds, seq, streamId, ...rest);
+        });
+        socket.onStreamAnnounced((streamId, info) => {
+                markVadEvent(`tutor audio: stream ${streamId} announced`);
+                player.announce(streamId, info);
+        });
         socket.onDisconnected(player.connectionLost);
         socket.onRequestSent(player.acceptNewAnswer);
         setPlayingStepIdSource(player.getPlayingStepId);
@@ -42,7 +61,18 @@ export const startLiveConversationVad = async (socket: Socket) => {
         let segmentStartedAt: number | null = null;
         let lastStuckWarningAt = 0;
         let preSpeechFrames: Float32Array[] = [];
+        // isSpeech probability of each frame, kept in step with preSpeechFrames /
+        // frameAccumulator so every message can report its chunk's average.
+        let preSpeechIsSpeech: number[] = [];
+        let accumulatorIsSpeech: number[] = [];
+        // DIAGNOSTIC: recent frames (speech probability and loudness), logged with
+        // what happened around the mic when a recording ends (see logRecordingTimeline).
+        let recentFrames: { at: number; isSpeech: number; loudnessDbfs: number }[] = [];
         let resampleFrame: any;
+        // Identifies one utterance: set when speech starts (with the preroll) and sent
+        // with every audio message of it, through the closing `ended: true` (or the
+        // audio-ended / audio-misfire message that closes it instead).
+        let recordingId: string | undefined;
 
         async function start() {
         try {
@@ -50,6 +80,7 @@ export const startLiveConversationVad = async (socket: Socket) => {
                 userIsSpeakingSegment = false;
                 frameAccumulator = [];
                 accumulatedSamplesCount = 0;
+                accumulatorIsSpeech = [];
 
                 // DIAGNOSTIC: highest isSpeech probability seen during the current segment.
                 // Logged on misfire/end to tell apart a threshold-tuning issue (close to 0.3)
@@ -75,6 +106,7 @@ export const startLiveConversationVad = async (socket: Socket) => {
                 const PRE_SPEECH_FRAMES = Math.ceil(PRE_SPEECH_MS / FRAME_DURATION_MS);
 
                 preSpeechFrames = [];
+                preSpeechIsSpeech = [];
                 // Adjust threshold logic to account for 24kHz chunks (150ms * 24 = 3600 samples)
                 // const CHUNK_THRESHOLD_SAMPLES = 3600;
                 const CHUNK_THRESHOLD_SAMPLES = 3600 * 2; // 300ms
@@ -95,7 +127,9 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                 channelCount: 1,
                                 echoCancellation: true,
                                 noiseSuppression: true,
-                                autoGainControl: true
+                                // Off so loudnessDbfs reflects how far the speaker is from the mic:
+                                // AGC boosts quiet input, making a distant TV look as loud as the user.
+                                autoGainControl: false
                         },
                         onnxWASMBasePath: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/",
                         baseAssetPath: "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.27/dist/",
@@ -108,6 +142,9 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                 const historyDurationMs = preSpeechFrames.length * 32; // Each frame is 32ms
                                 console.log(`🎙️ VAD Triggered! History buffer contains ${historyDurationMs}ms of audio.`);
                                 console.log("🎙️ VAD: Speech Started");
+                                // A spoken question is a new request: from here on, what's still
+                                // arriving for earlier ones is skipped (see socket.ts).
+                                recordingId = startNewRequest();
                                 userIsSpeakingSegment = true;
                                 maxIsSpeechThisSegment = 0;
                                 segmentStartedAt = performance.now();
@@ -130,6 +167,9 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                                 event: 'audio',
                                                 data: preRollBase64,
                                                 preroll: true, // tag so the server can identify this as pre-speech history
+                                                recordingId,
+                                                requestId: recordingId,
+                                                ...chunkMetrics(preSpeechFrames, preSpeechIsSpeech),
                                                 currentBookUid: getCurrentBookUid(),
                                                 currentPageIndex: getCurrentPageIndex(),
                                                 language: getCurrentLanguage()
@@ -140,8 +180,10 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                         // Only if it's actually playing, so nothing sits paused with
                                         // nothing to resume. No 'pause' message: the backend pauses
                                         // its own processing when it receives the preroll.
-                                        const playback = player.getState();
-                                        if (playback.active && !playback.paused) void player.pause();
+                                        if (PAUSE_PLAYBACK_ON_SPEECH) {
+                                                const playback = player.getState();
+                                                if (playback.active && !playback.paused) void player.pause();
+                                        }
 
                                         // Show the AI as listening now, rather than waiting for
                                         // the backend's "listening" status (same effect).
@@ -151,8 +193,10 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                 // Start the live accumulator fresh; normal 150ms chunking takes over from here.
                                 frameAccumulator = [];
                                 accumulatedSamplesCount = 0;
+                                accumulatorIsSpeech = [];
 
                                 preSpeechFrames = [];
+                                preSpeechIsSpeech = [];
                 
                                 // if (activeSourcesQueue.length > 0) {
                                 //         clearActiveAudioPlayback();
@@ -164,6 +208,7 @@ export const startLiveConversationVad = async (socket: Socket) => {
                         
                         onSpeechEnd: (audio) => {
                                 console.log(`🎙️ VAD: Speech Ended (segment lasted ${segmentStartedAt !== null ? ((performance.now() - segmentStartedAt) / 1000).toFixed(1) : '?'}s)`);
+                                logRecordingTimeline(recordingId, recentFrames, segmentStartedAt);
                                 userIsSpeakingSegment = false;
                                 segmentStartedAt = null;
                 
@@ -174,6 +219,9 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                                 event: 'audio',
                                                 data: base64String,
                                                 ended: true,
+                                                recordingId,
+                                                requestId: recordingId,
+                                                ...chunkMetrics(frameAccumulator, accumulatorIsSpeech),
                                                 currentBookUid: getCurrentBookUid(),
                                                 currentPageIndex: getCurrentPageIndex(),
                                                 language: getCurrentLanguage()
@@ -181,6 +229,7 @@ export const startLiveConversationVad = async (socket: Socket) => {
 
                                         frameAccumulator = [];
                                         accumulatedSamplesCount = 0;
+                                        accumulatorIsSpeech = [];
                                 }
                                 else {
                                         console.warn("⚠️ [VAD] onSpeechEnd fired with an empty frameAccumulator — no audio captured for this segment. " +
@@ -188,6 +237,8 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                                 "or onFrameProcessed's userIsSpeakingSegment branch never ran.");
                                         socket.send({
                                                 event: 'audio-ended',
+                                                recordingId,
+                                                requestId: recordingId,
                                                 currentBookUid: getCurrentBookUid(),
                                                 currentPageIndex: getCurrentPageIndex(),
                                                 language: getCurrentLanguage()
@@ -196,6 +247,7 @@ export const startLiveConversationVad = async (socket: Socket) => {
 
                                 // The utterance is done; later messages don't belong to it.
                                 setInterruptedStepId(undefined);
+                                recordingId = undefined;
                         },
 
                         // CRITICAL: fires INSTEAD of onSpeechEnd when the segment was too short
@@ -215,6 +267,8 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                 if (websocket()?.readyState === WebSocket.OPEN) {
                                         socket.send({
                                                 event: 'audio-misfire',
+                                                recordingId,
+                                                requestId: recordingId,
                                                 currentBookUid: getCurrentBookUid(),
                                                 currentPageIndex: getCurrentPageIndex(),
                                                 language: getCurrentLanguage()
@@ -223,7 +277,9 @@ export const startLiveConversationVad = async (socket: Socket) => {
 
                                 frameAccumulator = [];
                                 accumulatedSamplesCount = 0;
+                                accumulatorIsSpeech = [];
                                 setInterruptedStepId(undefined);
+                                recordingId = undefined;
                         },
                         
                         onFrameProcessed: (probabilities, frame) => {
@@ -256,14 +312,26 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                 // carries continuously across frame boundaries (no per-frame seam/crackle).
                                 const frame24k = resampleFrame(frame);
                 
+                                const isSpeech = probabilities?.isSpeech ?? 0;
+
+                                const now = performance.now();
+                                const loudnessDbfs = chunkMetrics([frame], []).loudnessDbfs;
+                                recentFrames.push({ at: now, isSpeech, loudnessDbfs });
+                                // For the AI icon's level meter.
+                                setMicLevel(dbfsToLevel(loudnessDbfs));
+                                while (recentFrames.length > 0 && now - recentFrames[0].at > RECENT_FRAMES_MS) recentFrames.shift();
+
                                 preSpeechFrames.push(frame24k);
+                                preSpeechIsSpeech.push(isSpeech);
                 
                                 if (preSpeechFrames.length > PRE_SPEECH_FRAMES) {
                                         preSpeechFrames.shift();
+                                        preSpeechIsSpeech.shift();
                                 }
                 
                                 if (userIsSpeakingSegment) {
                                         frameAccumulator.push(frame24k);
+                                        accumulatorIsSpeech.push(isSpeech);
                                         accumulatedSamplesCount += frame24k.length;
                 
                                         if (accumulatedSamplesCount >= CHUNK_THRESHOLD_SAMPLES && websocket()?.readyState === WebSocket.OPEN) {
@@ -274,6 +342,9 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                                         socket.send({
                                                                 event: 'audio',
                                                                 data: base64String,
+                                                                recordingId,
+                                                                requestId: recordingId,
+                                                                ...chunkMetrics(frameAccumulator, accumulatorIsSpeech),
                                                                 currentBookUid: getCurrentBookUid(),
                                                                 currentPageIndex: getCurrentPageIndex(),
                                                                 language: getCurrentLanguage()
@@ -282,17 +353,30 @@ export const startLiveConversationVad = async (socket: Socket) => {
                                                 
                                                 frameAccumulator = [];
                                                 accumulatedSamplesCount = 0;
+                                                accumulatorIsSpeech = [];
                                         }
                                 }
                         }
                 } as any); // Bypasses version-specific option mismatches in the TS checker
 
                 await vadInstance.start();
+
+                // DIAGNOSTIC: what the browser actually applied to the mic, and when it
+                // goes silent on its own (muted by the OS or another app).
+                const track: MediaStreamTrack | undefined = (vadInstance as any)._stream?.getAudioTracks?.()[0];
+                if (track) {
+                        console.log("🎙️ [VAD Diagnostic] mic settings:", track.getSettings());
+                        track.onmute = () => markVadEvent('mic track muted');
+                        track.onunmute = () => markVadEvent('mic track unmuted');
+                        track.onended = () => markVadEvent('mic track ended');
+                }
                 micStatus = true
                 delegate?.onMicStatusChanged(micStatus)
 
         } catch (err) {
                 console.error("Failed to start VAD live session", err);
+                // The caller tells the user (e.g. the microphone is blocked).
+                throw err;
         }
         }
 
@@ -314,7 +398,11 @@ export const startLiveConversationVad = async (socket: Socket) => {
                         frameAccumulator = [];
                         accumulatedSamplesCount = 0;
                         preSpeechFrames = [];
+                        preSpeechIsSpeech = [];
+                        accumulatorIsSpeech = [];
+                        recentFrames = [];
                         segmentStartedAt = null;
+                        recordingId = undefined;
                         
                         micStatus = false
                         delegate?.onMicStatusChanged(micStatus)
@@ -325,10 +413,10 @@ export const startLiveConversationVad = async (socket: Socket) => {
 
         _mic.stop = stop
         _mic.start = start
-        _mic.endPlayback = player.stop
+        _mic.endPlayback = () => { markVadEvent('playback stopped (new answer)'); return player.stop(); }
         _mic.cancelPlayback = player.cancel
-        _mic.stopPlaying = player.pause
-        _mic.resumePlaying = player.resume
+        _mic.stopPlaying = () => { markVadEvent('playback paused'); return player.pause(); }
+        _mic.resumePlaying = () => { markVadEvent('playback resumed'); return player.resume(); }
         _mic.playNextStream = player.playNextStream
         _mic.rewindStream = player.rewindStream
         _mic.setPlaybackRate = player.setPlaybackRate
@@ -343,6 +431,78 @@ export const startLiveConversationVad = async (socket: Socket) => {
 
         return _mic;
 };
+
+// DIAGNOSTIC: how long a stretch of frames is kept for logRecordingTimeline,
+// so it covers the whole of most recordings.
+const RECENT_FRAMES_MS = 60_000;
+// Logged from this long before speech started, to show the level just before it.
+const TIMELINE_LEAD_MS = 500;
+const NEGATIVE_SPEECH_THRESHOLD = 0.25;
+const POSITIVE_SPEECH_THRESHOLD = 0.3;
+
+// DIAGNOSTIC: logs a recording from just before it started to its end: every
+// VAD frame (speech probability and loudness), with what happened around the
+// mic at the same time (backend statuses, the tutor's audio, the mic track)
+// in between. Low probability with low loudness (around -50 dBFS or less) is
+// silence at the mic; if that starts while the user is still talking, the
+// event just before it is the likely cause.
+function logRecordingTimeline(recordingId: string | undefined, frames: { at: number; isSpeech: number; loudnessDbfs: number }[], startedAt: number | null) {
+        if (frames.length === 0) return;
+        const start = startedAt ?? frames[0].at;
+        const from = start - TIMELINE_LEAD_MS;
+        const shown = frames.filter(f => f.at >= from);
+        const events = vadEventsSince(from);
+        const tail = shown.filter(f => f.at >= shown[shown.length - 1].at - 1500);
+        const below = tail.filter(f => f.isSpeech < NEGATIVE_SPEECH_THRESHOLD);
+        const avgDbBelow = below.length > 0 ? below.reduce((n, f) => n + f.loudnessDbfs, 0) / below.length : undefined;
+
+        const rows = [
+                ...shown.map(f => ({
+                        at: f.at,
+                        row: {
+                                msFromStart: Math.round(f.at - start),
+                                isSpeech: Number(f.isSpeech.toFixed(3)),
+                                loudnessDbfs: f.loudnessDbfs,
+                                state: f.isSpeech >= POSITIVE_SPEECH_THRESHOLD ? 'speech' : f.isSpeech < NEGATIVE_SPEECH_THRESHOLD ? 'silence' : 'between',
+                                event: '',
+                        },
+                })),
+                ...events.map(e => ({
+                        at: e.at,
+                        row: { msFromStart: Math.round(e.at - start), isSpeech: '', loudnessDbfs: '', state: '', event: `⚡ ${e.what}` },
+                })),
+        ].sort((a, b) => a.at - b.at).map(r => r.row);
+
+        console.groupCollapsed(`🎙️ [VAD Diagnostic] recording ${recordingId ?? '?'} ended after ${((shown[shown.length - 1].at - start) / 1000).toFixed(1)}s, ${events.length} event(s): ` +
+                `${below.length}/${tail.length} frames in the last 1500ms below ${NEGATIVE_SPEECH_THRESHOLD}` +
+                (avgDbBelow !== undefined ? `, their average loudness ${avgDbBelow.toFixed(1)} dBFS` : ''));
+        console.table(rows);
+        console.groupEnd();
+}
+
+// Quietest level reported, instead of -Infinity for pure digital silence
+// (which JSON can't carry).
+const MIN_LOUDNESS_DBFS = -100;
+
+// Per-message signal metrics so the backend can tell a close speaker from
+// background voices (e.g. a TV across the room):
+// - avgIsSpeech: mean VAD speech probability of the chunk's frames, 0–1.
+// - loudnessDbfs: RMS level of the chunk's samples in dBFS, -100 (silence) to 0 (full scale).
+function chunkMetrics(frames: Float32Array[], isSpeech: number[]) {
+        let sumSquares = 0;
+        let samples = 0;
+        for (const frame of frames) {
+                for (let i = 0; i < frame.length; i++) sumSquares += frame[i] * frame[i];
+                samples += frame.length;
+        }
+        const rms = samples > 0 ? Math.sqrt(sumSquares / samples) : 0;
+        const dbfs = rms > 0 ? 20 * Math.log10(rms) : MIN_LOUDNESS_DBFS;
+        const avgIsSpeech = isSpeech.length > 0 ? isSpeech.reduce((a, b) => a + b, 0) / isSpeech.length : 0;
+        return {
+                avgIsSpeech: Math.round(avgIsSpeech * 1000) / 1000,
+                loudnessDbfs: Math.round(Math.max(MIN_LOUDNESS_DBFS, dbfs) * 10) / 10
+        };
+}
 
 function float32ToInt16Buffer(float32Array: Float32Array): ArrayBuffer {
         const buffer = new ArrayBuffer(float32Array.length * 2);

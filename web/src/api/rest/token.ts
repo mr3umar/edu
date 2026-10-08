@@ -141,6 +141,7 @@ export function saveSession(session: {
   setRefreshToken(session.refreshToken);
   setTokenExpiry(Date.now() + session.expiresIn * 1000);
   setStoredUser(session.user);
+  notifySession();
 }
 
 export function clearSession(): void {
@@ -148,6 +149,29 @@ export function clearSession(): void {
   setRefreshToken(undefined);
   setTokenExpiry(undefined);
   setStoredUser(undefined);
+  notifySession();
+}
+
+// Signed in: there's a token, or a refresh token to get a new one with (an
+// expired access token is renewed on the next request, see http.ts).
+export function hasSession(): boolean {
+  return !!(getAuthToken() || getRefreshToken());
+}
+
+// Told when the session starts or ends: sign-in, sign-out, or a session the
+// backend rejected and that couldn't be renewed. RequireAuth listens, so the
+// user is sent to sign in from whatever page they're on.
+const sessionListeners = new Set<() => void>();
+
+export function subscribeSession(listener: () => void): () => void {
+  sessionListeners.add(listener);
+  return () => {
+    sessionListeners.delete(listener);
+  };
+}
+
+function notifySession(): void {
+  sessionListeners.forEach(listener => listener());
 }
 
 // refreshAccessToken only returns { accessToken, expiresIn } — the refresh

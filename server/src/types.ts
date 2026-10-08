@@ -23,10 +23,11 @@ export type TextDelegate = {
         recordUsage: RecordUsage
 }
 
-export type RecordUsage = (cost: number, usage: {type: 'tokens' | 'per-audio' | 'per-charachter', tokens?: {input: number, output: number}, charactersCount?: number, audioMin?: number, info?: string}) => Promise<void>
+export type UsageDetail = {model: string; task: 'stt' | 'tts' | 'teaching' | 'book-structure' | 'board-content-validate' | 'board-html-prettier' | 'board-long-div' | 'board-long-multiply'; type: 'tokens' | 'per-audio' | 'per-charachter', tokens?: {input: number, cachedInput: number, output: number}, charactersCount?: number, audioMin?: number, info?: string}
+export type RecordUsage = (cost: number, usage: UsageDetail) => Promise<void>
 export type LinesDelegate = {
-        onMessage: (index: number, stepId: string, lang: string, lineToSay: string, htmlForBoard: AgentLine["boardContent"] | null, abortSignal: AbortSignal) => Promise<void>
-        onCompleted: () => Promise<void>
+        onMessage: (reqId: string, index: number, stepId: string, lang: string, lineToSay: string, htmlForBoard: AgentLine["boardContent"] | null, abortSignal: AbortSignal) => Promise<void>
+        onCompleted: (full: any) => Promise<void>
         callTool: (msg: {name: string, args?: any}) => Promise<any>
         recordUsage: RecordUsage
 }

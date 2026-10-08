@@ -50,6 +50,9 @@ export const createContext = (depends: {  }, fetch: Fetch) => {
         getUserId: async (scope: any) => {
             return scope.accessKeyData?.ownerId
         },
+        getClientLangauge: async (scope: any) => {
+            return scope.language ?? 'ar'
+        },
         // getShortId: async (scope: any, key: string, max: number) => {
         //     return geenrateShort.rnd()
         // },

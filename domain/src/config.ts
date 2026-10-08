@@ -3,7 +3,13 @@ import { createUidSchema } from '@dija/gormic-service-kit-domain';
 export const APP_ID = 'edu-ai';
 export const DEPLOYMENT_ID = 'edu-ai-v1-1';
 
-export const HOST = 'http://192.168.100.222:9004'
+export const HOST = process.env.BOOKS_URL2
+
+
+export const MAX_INPUT_TOKENS = 250000;
+
+
+export const STT_MODE: 'separate' | 'gemini' = 'separate'
 
 export const DATA_SCHEMA = {
     collections: {
@@ -16,11 +22,19 @@ export const DATA_SCHEMA = {
         uploads: 'uploads',
         users: 'users',
         credentials: 'credentials',
+        conversations: 'conversations',
+        messages: 'messages',
+        taskGroups: 'task-groups',
+        tasks: 'tasks',
+        steps: 'steps',
+        usages: 'usages',
     },
     links: {
         user_book: 'u_b',
         book_pdf: 'b_p',
         credentials_user: 'c_u',
+        taskGroup_conversation: 'tg_c',
+        user_conversation: 'u_c',
     },
     sequences: {
         // subinventories: "subinventories"
@@ -45,6 +59,29 @@ export const UID_SCHEMA = {
     }),
     users: createUidSchema([DATA_SCHEMA.collections.users], {
         mode: 'uuid-v7'
+    }),
+    conversations: createUidSchema([DATA_SCHEMA.collections.conversations], {
+        mode: 'uuid-v7'
+    }),
+    messages: createUidSchema([DATA_SCHEMA.collections.messages], {
+        mode: 'uuid-v7',
+        partitioning: {
+            
+        }
+    }),
+    taskGroups: createUidSchema([DATA_SCHEMA.collections.taskGroups], {
+        mode: 'uuid-v7'
+    }),
+    tasks: createUidSchema([DATA_SCHEMA.collections.tasks, DATA_SCHEMA.collections.taskGroups], {
+        mode: 'uuid-v7',
+        childKey: "tasks",
+    }),
+    usages: createUidSchema([DATA_SCHEMA.collections.usages], {
+        mode: 'uuid-v7'
+    }),
+    steps: createUidSchema([DATA_SCHEMA.collections.steps, DATA_SCHEMA.collections.tasks], {
+        mode: 'uuid-v7',
+        childKey: 'steps',
     }),
     // uploads: createUidSchema([DATA_SCHEMA.collections.uploads], {
     //     mode: 'uuid-v7'

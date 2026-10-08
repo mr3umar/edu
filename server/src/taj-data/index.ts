@@ -15,7 +15,12 @@ import { PostgresRepoImpl2 } from 'taj-data-server';
 
 export const createTajData = async () => {
 
-        const producer = await createProducer(KAFKA_INFO.ip);
+
+
+        // TODO: uncomment kafka
+        const producer = {
+            send: async () => {}
+        } // await createProducer(KAFKA_INFO.ip);
     
         const database = "edu_ai"
         const options: pg.PoolConfig = {
@@ -87,7 +92,8 @@ export const createTajData = async () => {
                 mainRepoDef = new Deferred<PostgresRepoImpl2>();
 
                 const schema = getSchemaName(INSTANCE_ID)
-                const mainRepo = new PostgresRepoImpl2(client, undefined, NODE_ID, INSTANCE_ID, schema, (data, runId) => {
+                //@ts-expect-error
+                const mainRepo = new PostgresRepoImpl2(client, NODE_ID, INSTANCE_ID, schema, (data, runId) => {
                     return context.onCommit(data, runId)
                 }, undefined, undefined)
 
@@ -255,9 +261,9 @@ export const createTajData = async () => {
                 // Nodes Table
                 await client.query(`CREATE TABLE "${schemaName}".nodes (
                     nodeName TEXT, 
-                    nodeId TEXT,
+                    "nodeId" TEXT,
                     data jsonb,
-                    PRIMARY KEY (nodeName, nodeId)
+                    PRIMARY KEY (nodeName, "nodeId")
                 );`)
                 .then(() => result.status.nodes = "created")
                 .catch(err => {
@@ -272,6 +278,7 @@ export const createTajData = async () => {
                 await client.query(`CREATE TABLE "${schemaName}".locks (
                     key TEXT PRIMARY KEY,
                     data jsonb,
+                    expires_at TIMESTAMPTZ,
                     wait_list TEXT[]
                 );`)
                 .then(() => result.status.locks = "created")

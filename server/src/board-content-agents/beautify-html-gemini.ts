@@ -158,6 +158,8 @@ export async function beautifyHtml(delegate: {recordUsage: RecordUsage}, html: s
   const reasoningTokens = (usage as any)?.thoughtsTokenCount ?? 0;
   const cost = calculateCost(model, tokensCount);
   delegate.recordUsage(cost.total, {
+    task: 'board-html-prettier',
+    model,
       type: 'tokens',
       tokens: tokensCount,
       info: `Input tokens: ${tokensCount.input} costs: ${cost.input}, Cached Input tokens: ${tokensCount.cachedInput} costs: ${cost.cachedInput}, output: ${tokensCount.output} includes reasoning tokens (${reasoningTokens}) costs: ${cost.output}. model: ${model}. Details: ${JSON.stringify(usage)}`,

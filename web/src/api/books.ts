@@ -1,6 +1,7 @@
 import type { BookM } from '../domain';
 import { _socket } from '../socket';
 import type { AiAgentStatus, BoardData, Message, StepId } from '../types/book';
+import { markVadEvent } from '../lib/vadDiagnostics';
 import { currentDocumentLang, type DocumentLang } from '../lib/useDocumentLang';
 
 const HOST = import.meta.env.VITE_HOST;
@@ -80,6 +81,7 @@ export function showCaption(text: string | undefined) {
         _tutorDelegate?.showCaption(text)
 }
 export async function setAiAgentStatus(status: AiAgentStatus) {
+        markVadEvent(`AI status: ${status}`)
         _tutorDelegate?.setAiAgentStatus(status)
 }
 
@@ -192,14 +194,19 @@ export async function resumeAnswer() {
         });
 }
 
-export async function clarifyPart(partId: string) {
+// What the user asks about a part of the page (from its marker's menu), as
+// the message's action: explain it, solve it (a question), or show options
+// for its answer (a question).
+export type PartAction = 'clarify-part' | 'solve' | 'show-options'
+
+export async function clarifyPart(partId: string, action: PartAction = 'clarify-part') {
         _socket.send({
                 event: 'json',
                 currentBookUid: _currentBookUid,
                 currentPageIndex: _currentPageIndex,
                 language: getCurrentLanguage(),
                 data: JSON.stringify({
-                        action: 'clarify-part',
+                        action,
                         partId,
                 })
         });

@@ -174,6 +174,8 @@ export async function generateLongDiv2(delegate: {recordUsage: RecordUsage}, con
       }
       const cost = calculateCost(model, tokensCount)
       delegate.recordUsage(cost.total, {
+        task: 'board-long-div',
+        model,
           type: 'tokens',
           tokens: tokensCount,
           info: `Input tokens: ${tokensCount.input} costs: ${cost.input}, Cached Input tokens: ${tokensCount.cachedInput} costs: ${cost.cachedInput}, output: ${tokensCount.output} includes reasoning tokens (${reasoningTokens}) costs: ${cost.output}. model: ${model}. Details: ${JSON.stringify(usage)}`

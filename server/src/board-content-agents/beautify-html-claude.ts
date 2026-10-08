@@ -152,6 +152,8 @@ export async function beautifyHtmlClaude(
   const cost = calculateCost(model, tokensCount);
 
   delegate.recordUsage(cost.total, {
+    task: 'board-html-prettier',
+    model,
     type: 'tokens',
     tokens: tokensCount,
     info:

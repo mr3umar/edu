@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../App';
 import { activeWordIndex, layoutCaption, learnPace } from '../lib/captionTiming';
 
@@ -12,8 +12,6 @@ export default function CaptionText({ text }: { text: string }) {
   const { mic } = useApp();
   const layout = useMemo(() => layoutCaption(text), [text]);
   const [active, setActive] = useState(-1);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const activeRef = useRef<HTMLSpanElement>(null);
 
   // Follow the audio each frame; re-render only when the word changes.
   useEffect(() => {
@@ -50,27 +48,15 @@ export default function CaptionText({ text }: { text: string }) {
     return () => cancelAnimationFrame(frame);
   }, [mic, text, layout]);
 
-  // Keep the spoken word in view in a long, scrolling caption.
-  useEffect(() => {
-    const box = boxRef.current;
-    const word = activeRef.current;
-    if (!box || !word) return;
-    const top = word.offsetTop - box.offsetTop;
-    const bottom = top + word.offsetHeight;
-    if (top < box.scrollTop) box.scrollTop = top;
-    else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
-  }, [active]);
-
   return (
-    // The bubble (with its tail) wraps the scrolling text: a scrolling box
-    // would clip the tail, which sits just outside it.
-    <div className='panel-caption' dir='auto' aria-live='polite'>
-      <div ref={boxRef} className='panel-caption-text'>
+    // Only the text follows the caption's language; the bubble keeps the
+    // panel's direction, so its tail points to the AI icon's side.
+    <div className='panel-caption' aria-live='polite'>
+      <div className='panel-caption-text' dir='auto'>
       {layout.tokens.map((token, i) =>
         token.isWord ? (
           <span
             key={i}
-            ref={i === active ? activeRef : undefined}
             className={`caption-word ${i === active ? 'active' : ''}`}
           >
             {token.text}

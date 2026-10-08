@@ -3,6 +3,10 @@ import { useApp } from '../../App';
 import type { AiAgentStatus, BoardData, Message, MessageOptionsData, StepId } from '../../types/book';
 import { cancelAnswer, onBoardContentUpdated, stopAiTask, pauseAnswer, resumeAnswer, setCurrentStepId, setTutorDelegate } from '../books';
 import { TutorContext, type AiTaskItem, type TutorContextType } from './context';
+import { useWakeLock } from '../../lib/useWakeLock';
+import { micErrorMessage } from '../../lib/micError';
+import { showMessage } from '../../components/ui/message-dialog';
+import { useDocumentLang } from '../../lib/useDocumentLang';
 
 // The AI tutor's state: conversation, mic/speaking status and whiteboard.
 // Mounted once for the whole app, so the tutor can be asked from any page;
@@ -77,6 +81,9 @@ export function TutorProvider({ children }: { children: React.ReactNode }) {
       ? "thinking"
       : micStatus && serverListening ? "listening" : "ready"
 
+  // The device stays awake while the tutor is talking.
+  useWakeLock(aiStatus === "speaking")
+
   // For the server's status updates, registered once below.
   const micRef = useRef(mic)
   micRef.current = mic
@@ -105,13 +112,32 @@ export function TutorProvider({ children }: { children: React.ReactNode }) {
 
   // The mic button only switches the mic; an answer that's playing keeps
   // playing, and the AI shows listening once the backend confirms it.
+  // When it can't be turned on (blocked, missing, busy...), the user is
+  // told why, and can try again from there.
+  const lang = useDocumentLang() === 'en' ? 'en' : 'ar'
   const startMic: TutorContextType["startMic"] = async () => {
     setMicStarting(true)
+    let failure: unknown
     try {
       await mic.start();
+    } catch (err) {
+      failure = err
     } finally {
       setMicStarting(false)
     }
+    if (failure === undefined) return
+
+    const message = micErrorMessage(failure, lang)
+    const close = { id: 'close', label: lang === 'en' ? 'Close' : 'إغلاق', variant: 'secondary' as const }
+    const choice = await showMessage({
+      tone: 'warning',
+      title: message.title,
+      description: message.description,
+      actions: message.canRetry
+        ? [close, { id: 'retry', label: lang === 'en' ? 'Try again' : 'حاول مرة أخرى' }]
+        : [close],
+    })
+    if (choice === 'retry') await startMic()
   }
   const stopMic: TutorContextType["stopMic"] = async () => {
     await mic.stop(false);
@@ -221,6 +247,13 @@ export function TutorProvider({ children }: { children: React.ReactNode }) {
             clearTimeout(graceTimerRef.current)
             graceTimerRef.current = setTimeout(endBusy, AUDIO_GRACE_MS)
           }
+        } else if (status === "paused") {
+          // The backend paused the answer: pause its playback (resumable from
+          // the AI icon). No 'pause' message back, since the backend asked for it.
+          // Only if it's actually playing, so nothing sits paused with nothing
+          // to resume.
+          const playback = micRef.current?.getPlaybackState()
+          if (playback?.active && !playback.paused) void micRef.current?.stopPlaying()
         }
         // "speaking" comes from the audio itself, so the server's is ignored.
       },

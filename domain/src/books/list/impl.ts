@@ -49,7 +49,7 @@ export const createService = (
                     point: 'a'
                 }, scope)
         
-                const items = linksRes.data.links.map(l => l.item as unknown as BookE).filter(notEmpty)
+                const items = linksRes.data.links.map(l => l.item as unknown as BookE).filter(notEmpty).filter(it => it.pk.cid == "books") // cid cond it temp due to old bug.
         
                 return {
                     items: items.map(mapBook),

@@ -1,5 +1,6 @@
 import { getAuthToken, getRefreshToken, getTokenExpiry, saveAccessToken, clearSession } from './token';
 import { ApiError } from './apiError';
+import { resetConversation } from '../conversation';
 
 // Same origin every REST service (listMyBooks, uploadPdf, ...) talks to.
 export const API_BASE_URL = import.meta.env.VITE_API_HOST;
@@ -36,6 +37,19 @@ async function performRefresh(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// The backend rejected the request's token: get a new one, or end the session
+// (RequireAuth then sends the user to sign in). Whether it was renewed.
+async function renewOrEndSession(): Promise<boolean> {
+  const refreshed = await (refreshPromise ??= performRefresh().finally(() => {
+    refreshPromise = null;
+  }));
+  if (!refreshed) {
+    clearSession();
+    resetConversation();
+  }
+  return refreshed;
 }
 
 // CLAUDE.md: refreshAccessToken runs whenever the access token has reached
@@ -94,15 +108,9 @@ export async function httpFetch<T>(
   // Reactive refresh: the proactive check above can still miss a token the
   // backend has independently invalidated.
   if (response.status === 401 && path !== REFRESH_PATH && !_isRetry) {
-    const refreshed = await (refreshPromise ??= performRefresh().finally(() => {
-      refreshPromise = null;
-    }));
-
-    if (refreshed) {
+    if (await renewOrEndSession()) {
       return httpFetch<T>({ method, path, headers, body }, true);
     }
-
-    clearSession();
   }
 
   // Every failure this backend sends back is a ServiceResult body — even on
@@ -113,6 +121,15 @@ export async function httpFetch<T>(
 
   if (!response.ok) {
     const serviceError = data?.error;
+
+    // The backend's way of saying the request had no valid token (a 500,
+    // like its other errors): handled like a 401.
+    if (serviceError?.code === 'MISSING_TOKEN' && path !== REFRESH_PATH && !_isRetry) {
+      if (await renewOrEndSession()) {
+        return httpFetch<T>({ method, path, headers, body }, true);
+      }
+    }
+
     if (serviceError?.code) {
       return {
         statusCode: response.status,

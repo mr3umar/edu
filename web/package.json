@@ -7,7 +7,8 @@
     "dev": "vite --host",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "certs": "mkdir -p certs && openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 825 -keyout certs/dev-key.pem -out certs/dev-cert.pem -subj /CN=localhost -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1'"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",

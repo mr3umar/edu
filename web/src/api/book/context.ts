@@ -14,6 +14,10 @@ export type BookContextType = {
   analyzingPages: number[],
   // Bumped per page each time its analysis completes, so it's fetched again.
   analysisRevisions: Record<number, number>,
+  // The pages are shown bigger (the header's zoom button); the only way to
+  // zoom them.
+  zoomed: boolean,
+  setZoomed: React.Dispatch<React.SetStateAction<boolean>>,
 };
 
 export const BookContext =

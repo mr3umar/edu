@@ -119,6 +119,32 @@
   display: none;
 }
 
+/* Zoomed (the header's zoom button): each page is 150% of its normal size,
+   whatever the window's shape, and can be panned around, up and down and
+   side to side (see Reader). Everything on the page (laser, markers...) is
+   sized from the page, so it scales along. */
+.reader-container.zoomed {
+  overflow-y: auto;
+  align-items: flex-start;
+}
+
+.reader-container.zoomed .page-shell {
+  width: 150%;
+  height: 150%;
+}
+
+/* The browser's own zoom is off in the reader (see BlockBrowserZoom). */
+html.no-browser-zoom,
+html.no-browser-zoom body {
+  touch-action: pan-x pan-y;
+}
+
+/* Until it's on its first page (see Reader), so the pages before it don't
+   flash by. */
+.reader-container.positioning {
+  visibility: hidden;
+}
+
 .reader-container:active {
   cursor: grabbing;
 }
@@ -167,8 +193,9 @@
 }
 
 /* .page-laser-overlay was here too, for the old glow (see ReaderPage). */
+/* The markers set their own transparency (see .page-part-chip). */
 .page-parts {
-  opacity: 0.3;
+  opacity: 1;
 }
 
 /* The laser (LaserOverlay): multiplied into the page, so its colour tints
@@ -246,11 +273,53 @@
 }
 
 .page-parts {
-  pointer-events: auto;
+  pointer-events: none;
 }
 
-.page-parts g {
+/* A part's marker (PagePartMarker): a small sparkle chip, with a bigger invisible
+   circle around it to tap. Only the markers take clicks, not the whole page. */
+.page-part {
   cursor: pointer;
+  pointer-events: auto;
+  outline: none;
+}
+
+.page-part-hit {
+  fill: transparent;
+  pointer-events: all;
+  /* A finger-sized tap area (44px across) at any page size: an invisible
+     stroke that doesn't scale with the page, around the circle (which does). */
+  stroke: transparent;
+  stroke-width: 44px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The sparkle is in the accent colour, on a white chip; reaching for it
+   tints the chip and deepens the sparkle. */
+.page-part-chip {
+  /* See-through as the whole layer used to be; the sparkle on it isn't. */
+  opacity: 0.7;
+  fill: #fff;
+  stroke: #c4c4c4;
+  transition: fill 150ms ease, stroke 150ms ease;
+}
+
+.page-part-sparkle {
+  fill: var(--color-accent-500);
+  transition: fill 150ms ease;
+}
+
+.page-part:hover .page-part-chip,
+.page-part:focus-visible .page-part-chip,
+.page-part[data-state='open'] .page-part-chip {
+  fill: oklch(94% 0.03 264);
+  stroke: var(--color-accent-500);
+}
+
+.page-part:hover .page-part-sparkle,
+.page-part:focus-visible .page-part-sparkle,
+.page-part[data-state='open'] .page-part-sparkle {
+  fill: var(--color-accent-600);
 }
 
 /* Page analysis in progress: a soft glow sweeps down the page and repeats,

@@ -7,6 +7,8 @@ import { createAiSession } from './ai-session.js';
 import { CryptoUtil } from './common/crypto.js';
 import { CLOUD_PUBLIC_KEY } from './keys/index.js';
 import { AccessKeyData } from './cloud/types.js';
+import { SERVICES } from './index-new.js';
+import { INSTANCE_ID } from './config.js';
 
 dotenv.config();
 
@@ -210,7 +212,7 @@ wss.on('connection', async (wsClient: WebSocket) => {
 
   // 🚀 Replace your wsClient.on('message') handler with this version:
 
-  const aiSessions: {[key: string]: Awaited<ReturnType<typeof createAiSession>>} = {}
+  // const aiSessions: {[key: string]: Awaited<ReturnType<typeof createAiSession>>} = {}
 
   wsClient.on('message', async (messageData: string) => {
     try {
@@ -234,16 +236,36 @@ wss.on('connection', async (wsClient: WebSocket) => {
         return
       }
 
-      if(!aiSessions[accessKeyData.ownerId]) {
-        aiSessions[accessKeyData.ownerId] = await createAiSession(wsClient)
-      }
-      const aiSession = aiSessions[accessKeyData.ownerId]
+      // if(!aiSessions[accessKeyData.ownerId]) {
+      //   aiSessions[accessKeyData.ownerId] = await createAiSession(wsClient, accessKeyData.ownerId)
+      // }
+      // const aiSession = aiSessions[accessKeyData.ownerId]
 
     
-      aiSession.handleMsg(packet)
+      // aiSession.handleMsg(packet)
+
+      if(!packet.language) {
+        throw new Error('language is missing')
+      }
+      if(!packet.conversationUid) {
+        throw new Error('conversationUid is missing')
+      }
+      const scope = {
+        accessKeyData,
+        instanceId: INSTANCE_ID,
+        wsClient, // temp
+        language: packet.language,
+      }
+
+      await SERVICES?.handleMsg({
+        conversationUid: packet.conversationUid,
+        bookUid: packet.currentBookUid,
+        pageIndex: packet.currentPageIndex,
+        ...packet,
+      }, scope)
       
-    } catch (err) {
-      console.error('Error handling data frame coming from client web window:', err);
+    } catch (err: any) {
+      console.error('Error handling data frame coming from client web window:', err.message, err.stack);
     }
   });
 

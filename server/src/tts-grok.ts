@@ -5,6 +5,7 @@ import { AgentLine, BoardContentType } from "./text-openai-lines.js";
 
 let streamSeq = -1;
 
+export const generateStreamId = () => String(++streamSeq)
 /*
 Voice	Character
 carina	Soft, empathetic, soothing
@@ -36,7 +37,7 @@ export async function initGrokTTS(
   abortSignal: AbortSignal,
   recordUsage: TextDelegate["recordUsage"],
 ) {
-  streamSeq++;
+  const streamId = generateStreamId()
 
   try {
     if (!textToken.trim()) return;
@@ -70,13 +71,17 @@ export async function initGrokTTS(
           voice_id: 'luna', //'Carina',
           output_format: { codec: 'pcm', sample_rate: 24000, bit_rate: 128000 },
           language: 'ar-SA',
-          
+          text_normalization: true, //Enable text normalization before synthesis. When enabled, the model normalizes written-form text (e.g. numbers, abbreviations, symbols) into spoken-form before generating audio.
+          // speed: 0.85,
+          optimize_streaming_latency: 1, //to reduce first-chunk size
         }),
       });
 
       const model = 'grok-tts'
         const cost = calculateTTSCost(model, textToken.length)
 recordUsage(cost.total, {
+  task: 'tts',
+  model,
         type: "per-charachter",
         charactersCount: textToken.length,
         info: `TTS cost: ${cost.total}, char count: ${textToken.length}. model: ${model}`
@@ -98,7 +103,7 @@ recordUsage(cost.total, {
     wsClient.send(
       JSON.stringify({
         event: "new-audio-stream",
-        streamId: `${streamSeq}`,
+        streamId,
         stepId,
         wordsIds,
         boardData,
@@ -158,7 +163,7 @@ recordUsage(cost.total, {
               data: toSend.toString("base64"),
               wordsIds,
               seq: chunkSeq,
-              streamId: `${streamSeq}`,
+              streamId,
             })
           );
         }
@@ -187,7 +192,7 @@ recordUsage(cost.total, {
               data: finalChunk.toString("base64"),
               wordsIds,
               seq: chunkSeq,
-              streamId: `${streamSeq}`,
+              streamId,
               completed: true,
             })
           );
@@ -200,7 +205,7 @@ recordUsage(cost.total, {
           event: "audio",
           wordsIds,
           seq: chunkSeq,
-          streamId: `${streamSeq}`,
+          streamId,
           completed: true,
         })
       );

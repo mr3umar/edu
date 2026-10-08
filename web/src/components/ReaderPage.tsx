@@ -6,11 +6,12 @@ import {
 } from 'react';
 
 import { useBookPage } from '../api/book-page/hook';
-import { clarifyPart, sendText } from '../api/books';
+import { sendText } from '../api/books';
 import { useBook } from '../api/book/hook';
 import type { PageM } from '../domain';
 import { useDocumentLang } from '../lib/useDocumentLang';
 import LaserOverlay from './LaserOverlay';
+import PagePartMarker, { partKind, type PagePart } from './PagePartMarker';
 
 type Props = {
   page: PageM;
@@ -87,9 +88,6 @@ const ReaderPage = forwardRef<
       });
     };
 
-    const onQuestionClicked = (partId: string) => {
-      clarifyPart(partId)
-    }
     return (
       <div
         ref={ref}
@@ -195,73 +193,14 @@ const ReaderPage = forwardRef<
           viewBox={"0 0 " + page.width + " " + page.height}
           className='page-parts'>
 
-          {pageAnalysis?.parts.filter(p => p.type?.includes("question") && p.coordinates).map((part, i) => (
-            // <ellipse key={`${part.id}`}
-            //   cx={part.coordinates.x + (book.language == "ar" ? part.coordinates.width : 0)}
-            //   cy={part.coordinates.y}
-            //   rx={10}
-            //   ry={10}
-            //   fill="cyan"
-            //   onClick={() => onQuestionClicked(part.id)}
-              
-            // />
-
-            <g key={part.id} transform={"translate(" + (part.coordinates.x + (book.language == "ar" ? part.coordinates.width : 0)) + ", " + part.coordinates.y + ")"}
-              onClick={() => onQuestionClicked(part.id)}>
-              {/* <circle
-    cx="0"
-    cy="0"
-    r="7"
-    fill="rgba(255, 255, 255, 0.5)"
-    stroke="#c8c8c8"
-    stroke-width="1"
-  /> */}
-
-{/* <path
-  d="M0-5 L1-1 L5 0 L1 1 L0 5 L-1 1 L-5 0 L-1-1 Z"
-  fill="#555"
-/> */}
-
-
-<circle cx="0" cy="0" r="2" fill="#555"/>
-<circle
-  cx="0"
-  cy="0"
-  r="5"
-  fill="none"
-  stroke="#555"
-  strokeWidth="1.4"
-/>
-
-            </g>
-          ))}
-
-          {pageAnalysis?.parts.filter(p => p.type?.includes("concept") && p.coordinates).map((part, i) => (
-            <ellipse key={`${part.id}`}
-            cx={part.coordinates.x + (book.language == "ar" ? part.coordinates.width : 0)}
-              cy={part.coordinates.y}
-              rx={10}
-              ry={10}
-              fill="orange"
-              onClick={() => onQuestionClicked(part.id)}
-            />
-
-
-          ))}
-
-          {pageAnalysis?.parts.filter(p => p.type?.includes("example") && p.coordinates).map((part, i) => (
-            <ellipse key={`${part.id}`}
-              cx={part.coordinates.x + (book.language == "ar" ? part.coordinates.width : 0)}
-              cy={part.coordinates.y}
-              rx={10}
-              ry={10}
-              fill="green"
-              onClick={() => onQuestionClicked(part.id)}
-            />
-
-
-          ))}
-          
+          {/* The parts the tutor can help with, all with the same marker. (Each
+              type used to have its own: a small target for questions, an
+              orange circle for concepts, a green one for examples.) */}
+          {(pageAnalysis?.parts as PagePart[] | undefined)
+            ?.filter(part => part.coordinates && partKind(part.type))
+            .map(part => (
+              <PagePartMarker key={part.id} part={part} rtl={book?.language == "ar"} isEnglish={isEnglish} />
+            ))}
           </svg>
 
           {/* Page analysis running: a light scan sweeping down the page, over the

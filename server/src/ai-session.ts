@@ -3,12 +3,13 @@ import { WebSocket } from 'ws'
 import { prepareForTTS } from "./prepareForTTS-openai.js"
 import { PROMPT_NORMALIZE_TEXT } from "./prompts/normalize-text.js"
 import { initGeminiLiveText } from "./text-gemini1.js"
-import { BoardContentType, initOpenAILiveLines } from "./text-openai-lines.js"
+import { BoardContentType } from "./text-openai-lines.js"
+import { initOpenAILiveLines } from "./text-openai-lines.js"
 import { hasLettersOrNumbers, initOpenAILiveText } from "./text-openai.js"
-import { initGrokTTS } from "./tts-grok.js"
+import { generateStreamId, initGrokTTS } from "./tts-grok.js"
 import { LineStreamQueue } from "./stream-splitter.js"
 import * as fs from 'fs'; // 📁 Native File System integration
-import { TextDelegate, TutorialJob, VoiceDelegate } from "./types.js"
+import { TextDelegate, TutorialJob, UsageDetail, VoiceDelegate } from "./types.js"
 import { generateContextualTutorial } from "./tutorial-service.js"
 import { streamAudioToOpenAI } from "./stt-openai.js"
 import { SERVICES } from "./index-new.js"
@@ -25,11 +26,12 @@ import { beautifyHtml } from "./board-content-agents/beautify-html-gemini.js"
 import { beautifyHtmlQwen } from "./board-content-agents/beautify-html-qwen.js"
 import { beautifyHtmlClaude } from "./board-content-agents/beautify-html-claude.js"
 import { validateBoardContent } from "./board-content-agents/validate-board-openai.js"
+import { groupBy } from "@dija/taj-data-services"
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const createAiSession = async (wsClient: WebSocket) => {
+export const createAiSession = async (wsClient: WebSocket, userId: string) => {
 
         let currentPageIndex = 0
         let currentUserLanguage: string | undefined = undefined
@@ -122,11 +124,20 @@ export const createAiSession = async (wsClient: WebSocket) => {
 
         let totalCost = 0
 
+        const usageRecords: {
+                usage: UsageDetail
+                cost: number
+        }[] = []
+
         const recordUsage: TextDelegate["recordUsage"] = async (cost, usage) => {
                 if (usage.type == 'tokens') {
                         console.log(usage.info)
                 }
 
+                usageRecords.push({
+                        usage,
+                        cost,
+                })
                 totalCost += cost
         }
 
@@ -139,6 +150,7 @@ export const createAiSession = async (wsClient: WebSocket) => {
         const tagOptionRegex = /\[option\s*([^\]]*)\]([\s\S]*?)\[\/option\]/g;
         // const optionRegexWithPrefix = /(?:^|\s)?(?:\d+[\.\-)]?|[•*+\-])?\s*\[option\s*([^\]]*)\]([\s\S]*?)\[\/option\]/g;
         const wordRegexWithPrefixAndXmlTag = /(?:\[word\s*|<word\s*)([^\]>]*)(?:\]|>)([\s\S]*?)(?:\[\/word\]|<\/word>|\[\/word>|<\/word\])/g;
+        const labelRegexWithPrefixAndXmlTag = /(?:\[label\s*|<label\s*)([^\]>]*)(?:\]|>)([\s\S]*?)(?:\[\/label\]|<\/label>|\[\/label>|<\/label\])/g;
         const optionRegexWithPrefixAndXmlTag = /(?:^|\s)?(?:\d+[\.\-)]?|[•*+\-])?\s*(?:\[option\s*|<option\s*)([^\]>]*)(?:\]|>)([\s\S]*?)(?:\[\/option\]|<\/option>|\[\/option>|<\/option\])/g;
         const attrRegex = /(\w+)=(?:\\)?"([^"]+)"/g;
 
@@ -644,7 +656,7 @@ export const createAiSession = async (wsClient: WebSocket) => {
 
         let ttsQueue = Promise.resolve();
         const textStream = await initOpenAILiveLines(undefined, wsClient, {
-                onMessage: async (index, stepId, lang, lineToSay, board, abortSignal) => {
+                onMessage: async (reqId, index, stepId, lang, lineToSay, board, abortSignal) => {
 
                         console.log(`INDEX::`, index)
 
@@ -710,6 +722,12 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                         return wordText;
                                 }
                         );
+                        raw = raw.replace(
+                                labelRegexWithPrefixAndXmlTag,
+                                (_, attrs, wordText) => {
+                                        return wordText;
+                                }
+                        );
 
 
                         raw = raw.replace(
@@ -737,6 +755,13 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                 const optionsIsEmpty = options.length == 0
                                 htmlForBoard = htmlForBoard.replace(
                                         wordRegexWithPrefixAndXmlTag,
+                                        (_, attrs, wordText) => {
+
+                                                return wordText;
+                                        }
+                                );
+                                htmlForBoard = htmlForBoard.replace(
+                                        labelRegexWithPrefixAndXmlTag,
                                         (_, attrs, wordText) => {
 
                                                 return wordText;
@@ -812,7 +837,7 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                                 prms.push(
                                                                         validateBoardContent({recordUsage}, htmlForBoard)
                                                                         .then(res => {
-                                                                                console.log(`[validateBoardContent]: stepId: ${stepId},  ${res.isValid}, correctedContent: ${res.correctedContent}`)
+                                                                                console.log(`[validateBoardContent]: stepId: ${stepId},  ${res.isValid}, correctedContent: ${res.correctedContent}. mistakes: ${res.mistakes}`)
                                                                                 boardData = {
                                                                                         type: 'general',
                                                                                         content: {
@@ -894,7 +919,7 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                 }
 
                                                 // if(writeToFile) {
-                                                        fs.appendFileSync(`./initOpenAILiveText-2.txt`, raw + '\n', 'utf-8')
+                                                        fs.appendFileSync(`./initOpenAILiveText-2.txt`, raw + (index === 0 ? '\n---------\n' : '\n'), 'utf-8')
                                                         // }
 
                                                 let localeCode = toLocale(lang) as LocaleCode
@@ -917,11 +942,11 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                         });
                                 
 
-                                                        raw = raw.replace(/[٠-٩]+(?:[.,٫][٠-٩]+)?/g, (match) => {
+                                                        raw = raw.replace(/[٠-٩]+(?:[.,٫،][٠-٩]+)?/g, (match) => {
                                                                 // Convert Arabic-Indic digits to Western digits
                                                                 const number = match
                                                                         .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-                                                                        .replace('٫', '.');
+                                                                        .replace(/[.,٫،]/g, '.');
                                                                 
                                                                 const res = toWordsSA.convert(Number(number));
                                                                 
@@ -941,9 +966,9 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                                 
                                                                 return res;
                                                         });
-                                                        fs.appendFileSync(`./initOpenAILiveText-3.txt`, raw + '\n', 'utf-8')
+                                                        raw = simplifyTashkeel(raw)
+                                                        fs.appendFileSync(`./initOpenAILiveText-3.txt`, raw + (index === 0 ? '\n---------\n' : '\n'), 'utf-8')
                                                 }
-
 
                                                 
                                                 return await initGrokTTS(
@@ -952,7 +977,7 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                         cc,
                                                         stepId,
                                                         wordsIds,
-                                                        options.length > 1 ? options : [], // workaround when textToSay mentioned the correct option after reciving from the user
+                                                        options.length > 1 ? options.map(opt => removeTashkeel(opt)) : [], // workaround when textToSay mentioned the correct option after reciving from the user
                                                         boardData,
                                                         abortSignal,
                                                         recordUsage,
@@ -961,14 +986,35 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                 console.log('tts finished')
                         }
                 },
-                onCompleted: async () => {
+                onCompleted: async (full) => {
                         
-                        wsClient.send(
-                                JSON.stringify({
-                                        event: "ai-agent-status",
-                                        status: 'ready',
-                                })
-                        );
+
+                        ttsQueue = ttsQueue
+                        .catch(() => { })
+                        .then(async () => {
+                                console.log(full, full.options, "%%%%")
+                                if(full.options) {
+
+                                        const streamId = generateStreamId()
+
+                                        wsClient.send(
+                                          JSON.stringify({
+                                            event: "new-audio-stream",
+                                            streamId,
+                                            options: full.options.map((opt: string) => {
+                                                opt = he.decode(opt);
+                                                return removeTashkeel(opt)
+                                                }),
+                                          })
+                                        );
+                                }
+                                wsClient.send(
+                                        JSON.stringify({
+                                                event: "ai-agent-status",
+                                                status: 'ready',
+                                        })
+                                );
+                        })
                 },
                 callTool: async (msg) => {
 
@@ -1053,15 +1099,20 @@ export const createAiSession = async (wsClient: WebSocket) => {
                 if (usage.costUsd > 0) {
                         if (usage.inputTokens) {
                                 recordUsage(usage.costUsd, {
+                                        task: 'stt',
+                                        model: usage.model,
                                         type: 'tokens',
                                         tokens: {
                                                 input: usage.inputTokens,
+                                                cachedInput: usage.cachedInputTokens,
                                                 output: usage.outputTokens,
                                         }
                                 })
                         }
                         else if (usage.audioMinutes) {
                                 recordUsage(usage.costUsd, {
+                                        task: 'stt',
+                                        model: usage.model,
                                         type: 'per-audio',
                                         audioMin: usage.audioMinutes
                                 })
@@ -1072,8 +1123,55 @@ export const createAiSession = async (wsClient: WebSocket) => {
                         console.log(usage.info)
                 }
 
-                console.log(`Total Cost of current session: ${totalCost}`)
+                let report = `\nUsage of User ${userId}`
 
+                const byTaskAndModel = groupBy(usageRecords, (item => `${item.usage.task} - ${item.usage.model}`))
+
+                for(const key in byTaskAndModel) {
+                        const recs = byTaskAndModel[key]
+
+                        const totals = recs.reduce((prev, cur) => {
+                                return {
+                                        inputTokens: prev.inputTokens + (cur.usage.tokens?.input ?? 0),
+                                        cachedInputTokens: prev.cachedInputTokens + (cur.usage.tokens?.cachedInput ?? 0),
+                                        outputTokens: prev.outputTokens + (cur.usage.tokens?.output ?? 0),
+                                        charactersCount: prev.charactersCount + (cur.usage.charactersCount ?? 0),
+                                        audioMin: prev.audioMin + (cur.usage.audioMin ?? 0),
+                                        cost: prev.cost + (cur.cost ?? 0),
+                                }
+                        }, {
+                                inputTokens: 0,
+                                cachedInputTokens: 0,
+                                outputTokens: 0,
+                                charactersCount: 0,
+                                audioMin: 0,
+                                cost: 0,
+                        })
+
+                        report += `\n${key.padEnd(40, ' ')}`
+                
+                        report += `\tReqs: \t${recs.length}`
+
+                        report += `\tInput: \t${totals.inputTokens.toLocaleString()}`
+                        report += `\tCached: \t${totals.cachedInputTokens.toLocaleString()}`
+                        report += `\tOutput: \t${totals.outputTokens.toLocaleString()}`
+                        
+                        report += `\tChars: \t${totals.charactersCount.toLocaleString()}`
+                        report += `\tAudio: \t${totals.audioMin.toFixed(2)} min`
+                        report += `\tCost: \t$${totals.cost.toFixed(6)}`
+                        // if (usage.info) {
+                        //     console.log(`  Info:         ${usage.info}`);
+                        // }
+                }
+
+                for (const { usage, cost } of usageRecords ?? []) {
+                
+                }
+                
+                report += `\n  TOTAL COST:   $${totalCost.toFixed(6)}`;
+                report += `==============================\n`;
+
+                console.log(report)
 
         }, 5000)
 
@@ -1150,7 +1248,7 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                         delete (analysis as any).words
                                                         for(const part of analysis.parts) {
                                                                 if(part.transformedText)
-                                                                        part.content = part.transformedText.full
+                                                                        part.content = part.transformedText.short
                                                 
                                                                 delete part.transformedText
                                                         }
@@ -1167,7 +1265,7 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                                                 // } 
                                                         }
                                                         console.log(`Sending page-analysis to ai agent..`)
-                                                        textStream.write(`page-analysis-${currentPageIndex}`, JSON.stringify(pageContent), true, 'system')
+                                                        textStream.write(`page-analysis-${currentPageIndex}`, `Current Page analysis you can use it with page image for more accuracy, you can mention to user meta data in this page analysis except [word]...[/word],${JSON.stringify(pageContent)}`, true, 'system')
                                                 }
 
                                                 // commeted, it should response without waiting..
@@ -1284,9 +1382,9 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                         await cancelCurrentRequest()
                                 }
 
-                                let packet2 = { ...packet }
-                                delete packet2.data
-                                console.log(packet2, '....')
+                                // let packet2 = { ...packet }
+                                // delete packet2.data
+                                // console.log(packet2, '....')
                                 chirp.write(packet.data)
 
                                 const end = () => {
@@ -1341,28 +1439,30 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                         const page = loadedPages[currentPageIndex]
                                         const part = page?.analysis?.parts?.find((p: any) => p.id == data.partId)
                                         if (part) {
+                                                let content = part.content
+                                                let parentContent: string | undefined = undefined
                                                 if (part.type?.includes("concept")) {
                                                         if (packet.language == "ar")
-                                                                textStream.write(`user-clarify-concept`, `اشرح هذا المفهوم بالتفصيل مع الأمثلة واستخدم tool writeToBoard لكتابة ورسم محتوى منسق بشكل جميل{partId: ${data.partId}, content: ${part.content}}`, true)
+                                                                textStream.write(`user-clarify-concept`, `اشرح هذا المفهوم بالتفصيل مع الأمثلة واستخدم tool writeToBoard لكتابة ورسم محتوى منسق بشكل جميل`, true)
                                                         else
-                                                                textStream.write(`user-clarify-concept`, `explain this concept with more details and examples and use tool writeToBoard to visualize with rich html/svg content {partId: ${data.partId}, content: ${part.content}}`, true)
+                                                                textStream.write(`user-clarify-concept`, `explain this concept with more details and examples and use tool writeToBoard to visualize with rich html/svg content`, true)
                                                 }
                                                 else if (part.type?.includes("example")) {
                                                         if (packet.language == "ar")
-                                                                textStream.write(`user-clarify-example`, `اشرح هذا المثال بالتفصيل واستخدم واستخدم tool writeToBoard لكتابة ورسم محتوى منسق بشكل جميل{partId: ${data.partId}, content: ${part.content}}`, true)
+                                                                textStream.write(`user-clarify-example`, `اشرح هذا المثال بالتفصيل واستخدم واستخدم tool writeToBoard لكتابة ورسم محتوى منسق بشكل جميل`, true)
                                                         else
-                                                                textStream.write(`user-clarify-example`, `explain this example with more details and use tool writeToBoard to visualize with rich html/svg content {partId: ${data.partId}, content: ${part.content}}`, true)
+                                                                textStream.write(`user-clarify-example`, `explain this example with more details and use tool writeToBoard to visualize with rich html/svg content`, true)
                                                 }
                                                 else {
                                                         const parentPart = part.type.includes("question") && part?.parentId ? page?.analysis?.parts?.find((p: any) => p.id == part.parentId)! : undefined
-                                                        const content = (parentPart?.type.includes("question_group") ? `${parentPart.content}\n` : '') + part.content
+                                                        parentContent = parentPart?.content
 
                                                         if (packet.language == "ar")
-                                                                textStream.write(`user-clarify-question`, `اقرأ السؤل ثم اشرح هذا السؤال واستخدم tool writeToBoard لكتابة ورسم محتوى منسق بشكل جميل ثم اكتب ٣ خيارات باستخدام تاق {partId: ${data.partId}, content: ${content}}`, true)
+                                                                textStream.write(`user-clarify-question`, `اقرأ السؤل ثم اشرح هذا السؤال بدون ذكر الاجابة واستخدم tool writeToBoard لكتابة ورسم محتوى منسق بشكل جميل ثم اكتب ٣ خيارات باستخدام تاق`, true)
                                                         else
-                                                                textStream.write(`user-clarify-question`, `read this question then explain  and use tool writeToBoard to visualize with rich html/svg content, then write 3 options and use tag option {partId: ${data.partId}, content: ${content}}`, true)
+                                                                textStream.write(`user-clarify-question`, `read this question then explain without mentioning the answer and use tool writeToBoard to visualize with rich html/svg content, then write 3 options and use tag option`, true)
                                                 }
-                                                textStream.send()
+                                                textStream.send(`Current page part meta data: {partId: ${data.partId}, content: ${part.content}, parentContent: ${parentContent}}`)
 
 
                                                 wsClient.send(
@@ -1374,6 +1474,58 @@ export const createAiSession = async (wsClient: WebSocket) => {
                                         }
                                         else {
                                                 console.error(`part ID ${data.partId} not exist`)
+                                        }
+                                }
+                                else if (data.action == "solve") {
+                                        await cancelCurrentRequest()
+                                        const page = loadedPages[currentPageIndex]
+                                        const part = page?.analysis?.parts?.find((p: any) => p.id == data.partId)
+                                        if (part) {
+                                                const parentPart = part.type.includes("question") && part?.parentId ? page?.analysis?.parts?.find((p: any) => p.id == part.parentId)! : undefined
+                                                // const content = (parentPart?.type.includes("question_group") ? `${parentPart.content}\n` : '') + part.content
+
+                                                if (packet.language == "ar")
+                                                        textStream.write(`user-clarify-question`, `اقرأ السؤل ثم اشرح وحل هذا السؤال واستخدم tool writeToBoard لكتابة ورسم محتوى منسق بشكل جميل ثم اكتب ٣ خيارات باستخدام تاق`, true)
+                                                else
+                                                        textStream.write(`user-clarify-question`, `read this question then explain and solve and use tool writeToBoard to visualize with rich html/svg content, then write 3 options and use tag option`, true)
+                                                textStream.send(`Current page part meta data: {partId: ${data.partId}, content: ${part.content}, parentContent: ${parentPart?.content}}`)
+
+                                                wsClient.send(
+                                                        JSON.stringify({
+                                                                event: "ai-agent-status",
+                                                                status: 'thinking',
+                                                        })
+                                                );
+                                        }
+                                        else {
+                                                console.error(`part ID ${data.partId} not exist`)
+                                        }
+                                }
+                                else if (data.action == "show-options") {
+                                        await cancelCurrentRequest()
+                                        const page = loadedPages[currentPageIndex]
+                                        const part = page?.analysis?.parts?.find((p: any) => p.id == data.partId)
+                                        if (part) {
+                                                const parentPart = part.type.includes("question") && part?.parentId ? page?.analysis?.parts?.find((p: any) => p.id == part.parentId)! : undefined
+                                                // const content = parentPart?.type.includes("question_group") ? `${parentPart.content}\n` : part.content
+
+                                                // if (packet.language == "ar")
+                                                //         textStream.write(`user-clarify-question`, `.اكتب 3 إجابات محتملة للسؤال`, true)
+                                                // else
+                                                //         textStream.write(`user-clarify-question`, ``, true)
+
+                                                textStream.send(`Write 3 possible answers to the question: exactly one correct answer and 2 plausible but wrong answers based on common student mistakes or misconceptions. Keep all options similar in length, style, and wording so the correct one doesn't stand out, avoid options like "all of the above" or "none of the above", and place the correct answer in a random position.
+Don't write anything else: no introduction, explanation, comments, numbering, or indication of which answer is correct. Only the three options, each on its own line. Current page part meta data: {partId: ${data.partId}, content: ${part.content}, parentContent: ${parentPart?.content}}`, 'options')
+
+                                                wsClient.send(
+                                                        JSON.stringify({
+                                                                event: "ai-agent-status",
+                                                                status: 'thinking',
+                                                        })
+                                                );
+                                        }
+                                        else {
+                                                console.error(`Do not write any step, just write 3 options .part ID ${data.partId} not exist`)
                                         }
                                 }
                                 else {
@@ -1479,3 +1631,21 @@ const languageLocales: Record<string, string> = {
     function removeTashkeel(text: string): string {
         return text.replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, '');
     }
+
+    // Keeps internal vowels & shadda (they disambiguate); drops redundant marks.
+    // Case endings (i'rab), which gives the natural pausal reading. Pass dropCaseEndings = false for Quranic or grammar-teaching text, where the endings matter.
+export function simplifyTashkeel(text: string, dropCaseEndings = true): string {
+        let t = text.normalize('NFC').replace(/\u0640/g, '');   // tatweel ـ
+      
+        t = t.replace(/\u0652/g, '')                            // sukun (implied)
+             .replace(/\u064E(?=[اى])/g, '')                    // fatha before alif  (ـَا)
+             .replace(/\u0650(?=ي(?![\u064B-\u0651]))/g, '')    // kasra before long ī (ـِي)
+             .replace(/\u064F(?=و(?![\u064B-\u0651]))/g, '');   // damma before long ū (ـُو)
+      
+        if (dropCaseEndings) {
+          const END = '\\u0651?(?:[\\s\\p{P}]|$)';              // word end, keep shadda
+          t = t.replace(new RegExp(`\\u064B(?=[اى](?:[\\s\\p{P}]|$))`, 'gu'), '') // ـًا
+               .replace(new RegExp(`[\\u064B-\\u0650](?=${END})`, 'gu'), '');   // final vowel/tanween
+        }
+        return t;
+      }

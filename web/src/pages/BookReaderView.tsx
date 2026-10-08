@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Loader2, ZoomIn, ZoomOut } from 'lucide-react';
 
 import { BookProvider } from '../api/book/provider';
 import { useBook } from '../api/book/hook';
@@ -39,6 +39,7 @@ export default function BookReaderView() {
 
     <div className="flex h-dvh w-dvw flex-col overflow-hidden bg-surface">
       <PageUrlSync bookId={bookId} page={page} />
+      <BlockBrowserZoom />
       <TopBar onBack={() => navigate('/')} />
 
       <div className="relative min-h-0 flex-1">
@@ -98,6 +99,9 @@ function TopBar({ onBack }: { onBack: () => void }) {
   const isEnglish = useDocumentLang() === 'en';
 
   const total = book?.pages.length ?? 0;
+  // While the backend is still processing the book, its sections aren't
+  // final: the title shows alone, and the progress beside it.
+  const processing = bookProcessingInfo(book).processing;
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-surface px-5">
@@ -109,21 +113,83 @@ function TopBar({ onBack }: { onBack: () => void }) {
         <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2} />
       </button>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-semibold text-text">
-          {book?.title ?? (loadError ? '' : isEnglish ? 'Loading…' : 'جارٍ التحميل…')}
-        </p>
+      <div className="flex min-w-0 flex-1">
+        <SectionSelector
+          title={book?.title ?? (loadError ? '' : isEnglish ? 'Loading…' : 'جارٍ التحميل…')}
+          titleOnly={processing}
+        />
       </div>
 
-      {bookProcessingInfo(book).processing ? <ProcessingStatus /> : <SectionSelector />}
+      {processing && <ProcessingStatus />}
 
       {total > 0 && <PageScrubber total={total} isEnglish={isEnglish} dir={bookDirection(book)} />}
+
+      {book && <ZoomButton isEnglish={isEnglish} />}
     </header>
   );
 }
 
-// Shown in place of the section picker while the backend is still processing
-// the book, since its sections aren't final yet.
+// Switches the pages between their normal size and zoomed in.
+function ZoomButton({ isEnglish }: { isEnglish: boolean }) {
+  const { zoomed, setZoomed } = useBook();
+  const label = zoomed
+    ? (isEnglish ? 'Zoom out' : 'تصغير')
+    : (isEnglish ? 'Zoom in' : 'تكبير');
+  const Icon = zoomed ? ZoomOut : ZoomIn;
+
+  return (
+    <button
+      onClick={() => setZoomed(z => !z)}
+      aria-pressed={zoomed}
+      aria-label={label}
+      title={label}
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
+        zoomed
+          ? 'bg-accent-100 text-accent-700 hover:bg-accent-200'
+          : 'text-text-muted hover:bg-surface-2 hover:text-text'
+      }`}
+    >
+      <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
+    </button>
+  );
+}
+
+// In the reader, the zoom button is the only way to zoom: the browser's own
+// zoom (ctrl/cmd + wheel or +/-/0, trackpad and touch pinch) is turned off
+// while it's open.
+function BlockBrowserZoom() {
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      // Trackpad pinches arrive as ctrl + wheel too.
+      if (e.ctrlKey || e.metaKey) e.preventDefault();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && ['+', '=', '-', '_', '0'].includes(e.key)) e.preventDefault();
+    };
+    // Safari's pinch gestures.
+    const onGesture = (e: Event) => e.preventDefault();
+
+    window.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('keydown', onKeyDown);
+    document.addEventListener('gesturestart', onGesture);
+    document.addEventListener('gesturechange', onGesture);
+    // Touch pinch: only panning is allowed.
+    document.documentElement.classList.add('no-browser-zoom');
+
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('gesturestart', onGesture);
+      document.removeEventListener('gesturechange', onGesture);
+      document.documentElement.classList.remove('no-browser-zoom');
+    };
+  }, []);
+
+  return null;
+}
+
+// Shown beside the title while the backend is still processing the book
+// (its sections aren't final yet, so the title has no section list then).
 function ProcessingStatus() {
   const { book } = useBook();
   const { status, percent } = bookProcessingInfo(book);
@@ -240,7 +306,7 @@ function PageScrubber({ total, isEnglish, dir }: { total: number; isEnglish: boo
         onPointerUp={endDrag}
         onPointerCancel={cancelDrag}
         onKeyDown={onKeyDown}
-        className="group flex h-6 w-40 cursor-pointer touch-none items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-600/40"
+        className="group flex h-6 w-28 cursor-pointer touch-none items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-600/40"
       >
         <div ref={trackRef} className="relative h-1.5 w-full rounded-full bg-surface-2">
           <div
@@ -256,7 +322,7 @@ function PageScrubber({ total, isEnglish, dir }: { total: number; isEnglish: boo
         </div>
       </div>
       <span dir="ltr" className="text-xs font-medium tabular-nums leading-none text-text-muted">
-        {current}/{total}
+        {current} / {total}
       </span>
     </div>
   );

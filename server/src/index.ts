@@ -6,9 +6,11 @@ import path from 'path';
 import { fileURLToPath } from 'url'; // 1. Import fileURLToPath
 import { streamAudioToGemini } from './audio-service.js';
 import { getBook } from './get-book.js';
-import './server.js';
+// import './server.js';
 import './logger.js';
 import './index-new.js'
+import * as https from 'https';
+import { httpOptions } from './config.js';
 
 export const BOOKS_URL = process.env.BOOKS_URL
 
@@ -29,8 +31,16 @@ export let DEMO_BOOK_ID: {value?: string} = {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+
 const app = express();
 const PORT = 5001;
+
+
+
+const httpsServer = https.createServer(
+  httpOptions,
+  app
+);
 
 app.use(cors());
 // Increase limits so you can receive raw audio uploads from your web app
@@ -143,4 +153,5 @@ app.get('/book/:book_id/:page_id', (
     }
   });
 });
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+httpsServer.listen(PORT, () => console.log(`Server running on port ${PORT}`));
